@@ -11,6 +11,7 @@ if platform.system() == 'Darwin':   # fixes plots not working on mac
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
+
 class Sending_Thread(threading.Thread):
 
     def __init__(self, com):
@@ -62,11 +63,11 @@ class RF:
         self.theta = deg2rad(np.array([0,0,0]))
         self.zeta = deg2rad(np.array([64, 53, 48.8]))
 
-        self.phi_old = self.phi
-        self.theta_old = self.phi
+        self.phi_old = np.array([0,0,0])
+        self.theta_old = np.array([0,0,0])
 
-        self.phi_dot = [0,0,0]
-        self.theta_dot = [0,0,0]
+        self.phi_dot = np.array([0,0,0])
+        self.theta_dot = np.array([0,0,0])
 
         self.index_l = [0.044, 0.027, 0.016]
         self.index_r = [0.03, 0.059, 0.05, 0.048, 0.016, 0.014]
@@ -84,7 +85,7 @@ class RF:
         self.index_Jf = np.array([[0,0],[0,0]])
         self.index_Je = np.array([0,0,0])
 
-        self.delta_t = 0
+        self.delta_t = 1
 
         self.com = serial.Serial()
         self.com.port = com_port
@@ -186,7 +187,14 @@ class RF:
 
 
     def calculate_velocities(self):
-        return 0
+        '''
+        Calculate approx joint velocities
+        '''
+        self.theta_dot = 1/self.delta_t * (self.theta - self.theta_old)
+        self.phi_dot = 1/self.delta_t * (self.phi - self.phi_old)
+
+        self.theta_old = self.theta.flatten()
+        self.phi_old = self.phi.flatten()
 
     
     def calculate_phid(self):
@@ -226,7 +234,6 @@ class RF:
         rfpoint7 = rfpoint6 + np.array([r[5]*np.cos(phi[0]+phi[1]+phi[2]+zeta[0]+zeta[1]+zeta[2]), r[5]*np.sin(phi[0]+phi[1]+phi[2]+zeta[0]+zeta[1]+zeta[2])])
         rfpoints = np.array([rfpoint1, rfpoint2, rfpoint3, rfpoint4, rfpoint5, rfpoint6, rfpoint7])
 
-
         # Update the plot
         self.fig.canvas.restore_region(self.background)
 
@@ -256,8 +263,8 @@ class RF:
                 self.update_plot() # Update the realtime plot
             self.update_message(0,0) # send updated data to RF
 
-            print('Theta: ',self.theta)
-            print('Phi: ',self.phi)
+            print('Theta: ',self.theta_dot)
+            print('Phi: ',self.phi_dot)
 
             time.sleep(0.01)
             time2 = time.time()
@@ -282,7 +289,7 @@ def rad2deg(rad):
 
 def main():
 
-    rf = RF('COM3', True, 9600)
+    rf = RF('COM9', True, 9600)
 
 
 if __name__ == '__main__':
