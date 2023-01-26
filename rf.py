@@ -11,7 +11,7 @@ if platform.system() == 'Darwin':   # fixes plots not working on mac
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
-
+global send_message
 class Sending_Thread(threading.Thread):
 
     def __init__(self, com):
@@ -20,15 +20,23 @@ class Sending_Thread(threading.Thread):
 
         self.phi_d_new = 0
         self.F_res = 0
-        self.message = 190
 
+        global send_message
+        send_message = 1
+        
         self.com = com
         self.running = True
 
     def run(self):
         while self.running:
-        
-            self.com.write(b'test\n')
+            #print('Message: ',self.message)
+            #self.com.write(b'\n')
+            global send_message
+            #send_message += 1
+            message = str(send_message) + '\n'
+            self.com.write(message.encode())
+            #self.com.write(str(self.message).encode())
+            #self.com.write(b'\n')
 
 
 
@@ -44,9 +52,12 @@ class Receiving_Thread(threading.Thread):
         self.com = com
         self.running = True
 
+        self.data = [0,0,0]
+
     def run(self):
         while self.running:
             data = self.com.readline()
+            #print(data)
             if not data == b'\r\n':
                 self.data=data
 
@@ -76,11 +87,19 @@ class RF:
         self.x_e = 0
         self.y_e = 0
 
+        self.vQ = np.array([0,0])
+        self.vQ_old = np.array([0,0])
+
+        self.phid = 0
+        self.phid_old = 0
+
+        self.mass = 1
+
         self.plot = plot
 
-
-        self.F_finger = 0 #force from FSR
-        self.F_tactip = 0 #force from tactip
+        self.F_FSR = 0
+        self.F_finger = np.array([0,0])
+        self.F_tactip = np.array([0,0])
 
         self.index_Jf = np.array([[0,0],[0,0]])
         self.index_Je = np.array([0,0,0])
@@ -128,21 +147,28 @@ class RF:
 
     def update_message(self, phi_d_new, F_res):
         # Update the parameters 
-        #self.sending_thread.message = 10
+        global send_message
+        send_message = str(phi_d_new)[:6]
         return 0
 
     def parse_input(self):
         # Recieve the measurements from the glove
         data_received = self.receiving_thread.data
         data = data_received
-        data = data[:18].decode('utf-8')
-        data = data.split(',')
+        if not data == [0,0,0]:
+            data = data[:18].decode('utf-8')
+            data = data.split(',')
+            print(data)
+            if len(data)==3:
+                self.phi[0] = deg2rad(float(data[0])) # set phi_1
+                self.phi[1] = deg2rad(float(data[1])) # set phi_2
+                self.phi[2] = deg2rad(float(data[2]))
 
-        self.phi[0] = deg2rad(float(data[0])) # set phi_1
-        self.phi[1] = deg2rad(float(data[1])) # set phi_2
-        self.phi[2] = deg2rad(float(data[2]))
-
-        self.F_finger = 0 # get the force from the FSR
+                self.F_finger = 0 # get the force from the FSR
+            else:
+                a=0
+                #print(data)
+                #print(self.sending_thread.message)
 
     def forwards_kinematics(self):
         '''
@@ -198,12 +224,39 @@ class RF:
 
     
     def calculate_phid(self):
-        # Use the admittance control algo to find phi_d(t+1)
+        '''
+        Use the admittance control algo to find phi_d(t+1)
+        '''
+        alpha = np.pi/2 - np.sum(self.theta)
+        self.F_finger = self.F_FSR * (1/np.linalg.norm(np.array([-np.cos(alpha), np.sin(alpha)])))*np.array([-np.cos(alpha), np.sin(alpha)])
         F_res = self.F_finger - self.F_tactip
+
+        # Calculate the Jacobians
+        l = self.index_l
+        theta = self.theta
+        J_e = (1/self.phi_dot[0]) * self.theta_dot
+        J_f = np.array([[l[0]*np.sin(theta[0]) + l[1]*np.sin(theta[0]+theta[1]) + l[2]*np.sin(theta[0]+theta[1]+theta[2]), \
+                         l[1]*np.sin(theta[0]+theta[1]) + l[2]*np.sin(theta[0]+theta[1]+theta[2]), \
+                         l[2]*np.sin(theta[0]+theta[1]+theta[2])],\
+                        [-l[0]*np.cos(theta[0]) - l[1]*np.cos(theta[0]+theta[1]) - l[2]*np.cos(theta[0]+theta[1]+theta[2]), \
+                         -l[1]*np.cos(theta[0]+theta[1]) - l[2]*np.cos(theta[0]+theta[1]+theta[2]), \
+                         -l[2]*np.cos(theta[0]+theta[1]+theta[2])]])
+
+        self.vQ_old = np.matmul(J_f, self.theta_dot)
+        self.vQ = ((F_res * self.delta_t)/self.mass) + self.vQ_old
+
+        J_comb = np.matmul(J_f, J_e)
+        J_comb_inv = 0.5 * np.array([1/J_comb[0], 1/J_comb[1]])
+
+        # Update phi_d
+        self.phid = self.phid_old + (np.dot(J_comb_inv, self.vQ))*self.delta_t
+        if not np.isnan(self.phid):
+            self.phid_old = float(self.phid)
+        
         return 0
 
     def get_grasp_force(self):
-        # Update the F_tactip from the tactile images
+        # Update the F_tactip - (is 2 dimensional) from the tactile images
         return 0
 
     def update_plot(self):
@@ -259,12 +312,16 @@ class RF:
             self.forwards_kinematics() # find the fingertip position
             self.inverse_kinematics() # get the full pose of the system
             self.calculate_velocities() # update the velocities using time and previous angles
+            self.calculate_phid()
             if self.plot:
                 self.update_plot() # Update the realtime plot
-            self.update_message(0,0) # send updated data to RF
+            if not np.isnan(self.phid):
+                self.update_message(self.phid,0) # send updated data to RF
 
-            print('Theta: ',self.theta_dot)
-            print('Phi: ',self.phi_dot)
+            #print('Theta: ',self.theta_dot)
+            #print('Phi: ',self.phi_dot)
+            #print('Fingertip Velocity: ', self.vQ)
+            #print('Phid: ', self.phid)
 
             time.sleep(0.01)
             time2 = time.time()
@@ -289,7 +346,7 @@ def rad2deg(rad):
 
 def main():
 
-    rf = RF('COM9', True, 9600)
+    rf = RF('COM3', True, 9600)
 
 
 if __name__ == '__main__':
