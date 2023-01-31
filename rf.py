@@ -11,60 +11,73 @@ if platform.system() == 'Darwin':   # fixes plots not working on mac
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
-global send_message
-class Sending_Thread(threading.Thread):
+# Define Globals
+startMarker = '<'
+endMarker = '>'
+dataStarted = False
+dataBuf = ""
+messageComplete = False
+
+
+class Serial_Thread(threading.Thread):
 
     def __init__(self, com):
-
         threading.Thread.__init__(self)
 
-        self.phi_d_new = 0
-        self.F_res = 0
+        self.com = com
+        self.recv_msg = ''
+        self.send_msg = ''
 
-        global send_message
-        send_message = 1
+    def recvArduino(self):
+
+        global dataStarted, dataBuf, messageComplete
+
+        if self.com.inWaiting() > 0 and messageComplete == False:
+            x = self.com.read().decode("utf-8") # decode needed for Python3
+            
+            if dataStarted == True:
+                if x != endMarker:
+                    dataBuf = dataBuf + x
+                else:
+                    dataStarted = False
+                    messageComplete = True
+            elif x == startMarker:
+                dataBuf = ''
+                dataStarted = True
         
-        self.com = com
-        self.running = True
+        if (messageComplete == True):
+            messageComplete = False
+            return dataBuf
+        else:
+            return "XXX" 
+
+    
+    def sendToArduino(self):
+    
+        # this adds the start- and end-markers before sending
+        global startMarker, endMarker
+        
+        stringWithMarkers = (startMarker)
+        stringWithMarkers += self.send_msg
+        stringWithMarkers += (endMarker)
+
+        self.com.write(stringWithMarkers.encode('utf-8')) # encode needed for Python3
+
 
     def run(self):
-        while self.running:
-            #print('Message: ',self.message)
-            #self.com.write(b'\n')
-            global send_message
-            #send_message += 1
-            message = str(send_message) + '\n'
-            self.com.write(message.encode())
-            #self.com.write(str(self.message).encode())
-            #self.com.write(b'\n')
+        prevTime = time.time()
 
-
-
-class Receiving_Thread(threading.Thread):
-
-    def __init__(self, com):
-
-        threading.Thread.__init__(self)
-
-        self.phi_d_new = 0
-        self.F_res = 0
-
-        self.com = com
-        self.running = True
-
-        self.data = [0,0,0]
-
-    def run(self):
-        while self.running:
-            data = self.com.readline()
-            #print(data)
-            if not data == b'\r\n':
-                self.data=data
-
-
-
-
-
+        while True:
+            # Check for arduino msg
+            received_msg = self.recvArduino()
+            if not received_msg == 'XXX':
+                self.recv_msg = received_msg
+                pass
+            # Send message at a given interval
+            if time.time() - prevTime > 0.004:
+                self.sendToArduino()
+                prevTime = time.time()
+            
 
 class RF:
 
@@ -113,12 +126,9 @@ class RF:
         self.com.writeTimeout=0
         self.com.open()
 
-        self.sending_thread = Sending_Thread(self.com)
-        self.receiving_thread = Receiving_Thread(self.com)
-        print('Starting Sending Thread...')
-        self.sending_thread.start()
-        print('Starting Receiving Thread...')
-        self.receiving_thread.start()
+        self.serial_thread = Serial_Thread(self.com)
+        print('Starting Serial Thread...')
+        self.serial_thread.start()
 
         keyboard.add_hotkey('x', self.exit_key)
 
@@ -147,24 +157,24 @@ class RF:
 
     def update_message(self, phi_d_new, F_res):
         # Update the parameters 
-        global send_message
-        send_message = str(phi_d_new)[:6]
+        message = str(phi_d_new)
+        self.serial_thread.send_msg = message
         return 0
 
     def parse_input(self):
         # Recieve the measurements from the glove
-        data_received = self.receiving_thread.data
+        data_received = self.serial_thread.recv_msg
         data = data_received
-        if not data == [0,0,0]:
-            data = data[:18].decode('utf-8')
+        if not data == 'XXX':
+            #data = data[:18].decode('utf-8')
             data = data.split(',')
-            print(data)
-            if len(data)==3:
+            #print(data)
+            if len(data)==4:
                 self.phi[0] = deg2rad(float(data[0])) # set phi_1
                 self.phi[1] = deg2rad(float(data[1])) # set phi_2
                 self.phi[2] = deg2rad(float(data[2]))
 
-                self.F_finger = 0 # get the force from the FSR
+                print(data[3]) # get the force from the FSR
             else:
                 a=0
                 #print(data)
@@ -315,15 +325,16 @@ class RF:
             self.calculate_phid()
             if self.plot:
                 self.update_plot() # Update the realtime plot
+            #self.phid=0
             if not np.isnan(self.phid):
                 self.update_message(self.phid,0) # send updated data to RF
 
             #print('Theta: ',self.theta_dot)
-            #print('Phi: ',self.phi_dot)
+            #print('Phi: ',self.phi)
             #print('Fingertip Velocity: ', self.vQ)
             #print('Phid: ', self.phid)
 
-            time.sleep(0.01)
+            time.sleep(0.001)
             time2 = time.time()
             self.delta_t=time2-time1
             #print('Delta t: ',self.delta_t)
@@ -346,7 +357,7 @@ def rad2deg(rad):
 
 def main():
 
-    rf = RF('COM3', True, 9600)
+    rf = RF('COM3', True, 115200)
 
 
 if __name__ == '__main__':
