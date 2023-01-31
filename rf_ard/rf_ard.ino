@@ -1,8 +1,6 @@
 #include <Servo.h>  // add servo library
+#include "serial_comms.h" //add serial class
 
-// Init the message receiving stuff
-char buffer[8];
-String message;
 
 // Init the stuff for the index servo
 Servo indexservo;
@@ -13,6 +11,9 @@ int index_set_pos;
 float index_actual_pos;
 float index_phi3;
 float index_phi2;
+
+// Init serial comms class
+Serial_Comms serial_comms;
 
 
 float read_encoders(char finger){
@@ -61,7 +62,7 @@ void setup() {
   // put your setup code here, to run once:
   //indexservo.attach(11);
 
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   pinMode(index_servo_potpin, INPUT);
   pinMode(index_phi3_potpin, INPUT);
@@ -75,24 +76,7 @@ void loop() {
   // put your main code here, to run repeatedly:
 
   read_encoders('I');
-
-  
-  if (Serial.available() > 0) {
-    // read byte of received data:
-    int rlen = Serial.readBytesUntil('\n', buffer, 8);
-
-    // prints the received data on serial monitor
-    Serial.print(index_actual_pos);
-    Serial.print(',');
-    Serial.print(index_phi2);
-    Serial.print(',');
-    Serial.print(index_phi3);
-    Serial.println();
-    delay(10);
-    
-    //for(int i = 0; i < rlen; i++){
-      //Serial.print(buffer[i]);
-    //}
-  }
+  serial_comms.recvWithStartEndMarkers();
+  serial_comms.replyToPython(index_actual_pos, index_phi2, index_phi3, 10.0);
 
 }
