@@ -48,7 +48,7 @@ class Serial_Comms {
     
     //===============
     
-    void replyToPython(float phi1, float phi2, float phi3, float F_f) {
+    void replyToPython(float phi1, float phi2, float phi3, float F_f, float misc) {
         if (newData == true) {
             Serial.print("<");
             Serial.print(phi1);
@@ -57,8 +57,10 @@ class Serial_Comms {
             Serial.print(",");
             Serial.print(phi3);
             Serial.print(",");
-            //Serial.print(F_f);
-            Serial.print(receivedChars);
+            Serial.print(F_f);
+            //Serial.print(receivedChars);
+            Serial.print(",");
+            Serial.print(misc);
             Serial.print('>');
             newData = false;
         }

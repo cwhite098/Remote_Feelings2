@@ -119,6 +119,8 @@ class RF:
 
         self.delta_t = 1
 
+        self.debug = 0
+
         self.com = serial.Serial()
         self.com.port = com_port
         self.com.baudrate = baud_rate
@@ -169,12 +171,15 @@ class RF:
             #data = data[:18].decode('utf-8')
             data = data.split(',')
             #print(data)
-            if len(data)==4:
+            if len(data)==5:
                 self.phi[0] = deg2rad(float(data[0])) # set phi_1
                 self.phi[1] = deg2rad(float(data[1])) # set phi_2
                 self.phi[2] = deg2rad(float(data[2]))
 
-                print(data[3]) # get the force from the FSR
+                self.F_FSR = float(data[3])
+                self.debug = data[4]
+
+                #print(data[3]) # get the force from the FSR
             else:
                 a=0
                 #print(data)
@@ -259,7 +264,7 @@ class RF:
         J_comb_inv = 0.5 * np.array([1/J_comb[0], 1/J_comb[1]])
 
         # Update phi_d
-        self.phid = self.phid_old + (np.dot(J_comb_inv, self.vQ))*self.delta_t
+        self.phid = self.phi[2] + (np.dot(J_comb_inv, self.vQ))*self.delta_t
         if not np.isnan(self.phid):
             self.phid_old = float(self.phid)
         
@@ -314,11 +319,22 @@ class RF:
         return 0
 
     def run(self):
-        
+
+        # Find the rest force value when no movement
+        print('Hold finger still, finding force rest point...')
+        rest_list = []
+        for i in range(20):
+            self.parse_input()
+            rest_list.append(self.F_FSR)
+            time.sleep(0.001)
+        rest_point = np.mean(rest_list)
+
         while True:
             time1 = time.time()
 
             self.parse_input() # read from serial and update params
+            self.F_FSR = -(self.F_FSR - rest_point)
+            #print(self.F_FSR)
             self.forwards_kinematics() # find the fingertip position
             self.inverse_kinematics() # get the full pose of the system
             self.calculate_velocities() # update the velocities using time and previous angles
@@ -327,12 +343,13 @@ class RF:
                 self.update_plot() # Update the realtime plot
             #self.phid=0
             if not np.isnan(self.phid):
-                self.update_message(self.phid,0) # send updated data to RF
+                self.update_message(rad2deg(self.phid),0) # send updated data to RF
 
             #print('Theta: ',self.theta_dot)
             #print('Phi: ',self.phi)
             #print('Fingertip Velocity: ', self.vQ)
-            #print('Phid: ', self.phid)
+            print('Phid: ', rad2deg(self.phid), 'PID Out: ', self.debug)
+            #print('Actual Pos: ', rad2deg(self.phi[0]))
 
             time.sleep(0.001)
             time2 = time.time()
