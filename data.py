@@ -1,17 +1,11 @@
 import pandas as pd
 import numpy as np
-from image_processing import load_frames, get_all_ssim, middle_crop
+from image_processing import load_frames, get_all_ssim, apply_thresholding, crops, thresh_params
 import matplotlib.pyplot as plt
 
 
-'''
-Need to:
-    - Load csv and remove redundant cols
-    - add ssim col to df
-    - calc resultant force
-    - check reference frame
-    
-'''
+def print_summary(df):
+    print(df[['fz','ssim_t1', 'ssim_t2', 'ssim_t3']].describe())
 
 
 def load_data(finger_name):
@@ -27,9 +21,18 @@ def load_data(finger_name):
     df['F_res'] = F_res
 
     # Load the images and get ssim
-    frames, names = load_frames(finger_name, middle_crop)
+    frames, names = load_frames(finger_name, crops[finger_name])
     ssims = get_all_ssim(frames)
     df['ssim_t1'] = ssims
+
+    thresh_frames = apply_thresholding(frames, thresh_params[finger_name])
+    ssims = get_all_ssim(thresh_frames)
+    df['ssim_t2'] = ssims
+
+    # Do the above for the masked frames
+
+    # Load the keypoint locations
+
 
     print(df.head())
     return df
@@ -37,9 +40,15 @@ def load_data(finger_name):
 
 
 def main():
-    df = load_data('Middle')
-    plt.scatter(df['ssim'], df['fz'])
-    plt.show()
+    df_middle = load_data('Middle')
+    print_summary(df_middle)
+
+    df_index = load_data('Index')
+    print_summary(df_index)
+
+    df_thumb = load_data('Thumb')
+    print_summary(df_thumb)
     
+
 if __name__ == '__main__':
     main()
