@@ -7,15 +7,15 @@ from skimage.metrics import structural_similarity as ssim
 
 
 crops = {
-    'Thumb': [100,0,215,240],
+    'Thumb': [118,0,218,240],
     'Middle': [120,0,220,240],
-    'Index': [100,0,215,240]
+    'Index': [118,0,218,240]
 }
 
 thresh_params = {
-    'Thumb': [13, -25],
+    'Thumb': [15, -25],
     'Middle': [15, -25],
-    'Index': [13, -25]
+    'Index': [15, -25]
 }
 
 def save_json(dict, path):
@@ -64,6 +64,7 @@ def get_all_ssim(frames):
 
     return ssim_list
 
+
 def get_blob_detector(finger_name, frames=None, refit=False):
 
     if refit:
@@ -89,32 +90,45 @@ def get_blob_detector(finger_name, frames=None, refit=False):
 
     return detector
 
+
 def mask_with_blobs(frames, finger_name, refit=False):
     '''
     Obtain blobs using the detector and use them to apply a mask to
     the tactile images - blocking out background
     '''
     out_frames = []
-    out_kpts = []
 
     det = get_blob_detector(finger_name, frames, refit=refit)
     for frame in frames:
         keypoints = det.detect(frame)
         kpts = [cv2.KeyPoint(kp.point[0], kp.point[1], kp.size) for kp in keypoints]
-
         mask = np.zeros(frames[0].shape[:2], dtype="uint8")
+
         for kpt in kpts: # add all kpts to mask
-            cv2.circle(mask, (145, 200), 100, 255, -1) #add circle to mask
+            cv2.circle(mask, (int(kpt.pt[0]), int(kpt.pt[1])), int(kpt.size), 255, -1) #add circles to mask
 
         masked_frame = cv2.bitwise_and(frame, frame, mask=mask)
+        out_frames.append(masked_frame)
 
-    return frames
+    return np.array(out_frames)
+
 
 def get_blob_locs(frames, finger_name, refit=False):
     '''
     Get the coordinates of all the blobs detected.
     '''
-    return pts
+
+    blob_locs = []
+    det = get_blob_detector(finger_name, frames, refit=refit)
+    for frame in frames:
+        kpts_list=[]
+        keypoints = det.detect(frame)
+        for kp in keypoints:
+            kpts_list.append([kp.point[0], kp.point[1], kp.size]) # include size, why not?
+        blob_locs.append(np.array(kpts_list))
+
+    return np.array(blob_locs)
+
 
 def apply_thresholding(frames, params):
     '''
@@ -131,20 +145,25 @@ def apply_thresholding(frames, params):
 
 def main():
 
-    frames, names = load_frames('Middle', crops['Middle'])
-    print(frames.shape)
+    finger_name = 'Index'
+
+    t1_frames, names = load_frames(finger_name, crops[finger_name])
+    print(t1_frames.shape)
 
     # Testing the thresholding
-    frames_thresh = apply_thresholding(frames, thresh_params['Middle'])
-    '''
-    for f in frames_thresh:
+    t2_frames_thresh = apply_thresholding(t1_frames, thresh_params[finger_name])
+    '''for f in frames_thresh:
         cv2.imshow('Test', f)
-        cv2.waitKey()
-    '''
+        cv2.waitKey()'''
 
     # Testing the masking with blobs
-    frames = mask_with_blobs(frames, 'Middle', refit=True)
+    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=True)
+    for f in t3_frames:
+        cv2.imshow('Test', f)
+        cv2.waitKey()
 
+    blob_locs = get_blob_locs(t1_frames, finger_name, refit=False)
+    print(blob_locs[0])
     
 if __name__ == '__main__':
     main()
