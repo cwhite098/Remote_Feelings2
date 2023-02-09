@@ -153,13 +153,13 @@ class PoseNet():
         self.model.summary()
 
 
-    def plot_learning_curves(self):
+    def plot_learning_curves(self, finger_name, img_type):
         '''
         Plot the loss and the validation loss
         '''
         plt.plot(self.history.history['loss'], label='Loss')
-        plt.plot(self.history.history['val_loss'], label= 'Val Loss')
-        plt.savefig('saved_nets/'+'_'+self.stamp+'/learning-curve.pdf')
+        #plt.plot(self.history.history['val_loss'], label= 'Val Loss')
+        plt.savefig('saved_nets/'+finger_name+'_'+img_type+'_'+self.stamp+'/learning-curve.pdf')
         plt.legend(), plt.title('Loss Curve'), plt.show()
 
 
@@ -167,7 +167,7 @@ class PoseNet():
         return self.model.history, self.model
 
 
-    def save_network(self, finger_name):
+    def save_network(self, finger_name, img_type):
         '''
         Save the network and a JSON of parameters.
         '''
@@ -191,8 +191,8 @@ class PoseNet():
             param_dict['loss'] = self.loss
             param_dict['MSE'] = self.mse
 
-        self.model.save('saved_nets/'+finger_name+'_'+self.stamp+'/CNN.h5')
-        with open('saved_nets/'+finger_name+'_'+self.stamp+'/params.json', 'w') as fp:
+        self.model.save('saved_nets/'+finger_name+'_'+img_type+'_'+self.stamp+'/CNN.h5')
+        with open('saved_nets/'+finger_name+'_'+img_type+'_'+self.stamp+'/params.json', 'w') as fp:
             json.dump(param_dict, fp)
             fp.close()
 
@@ -228,16 +228,22 @@ class PoseNet():
 
 def main():
 
-    batch_size = 16 # from paper
+    batch_size = 32 # from paper
     finger_name = 'Middle'
+    img_type = 't2'
 
     print('Loading Data...')
     df, t1, t2, t3, blob_locs = load_data(finger_name)
     print(finger_name+':')
     print_summary(df)
 
-    images = t1[1:]/255 # remove default image and normalise
-    # t2 and t3 are already normalised
+    if img_type == 't1':
+        images = t1[1:]/255 # remove default image and normalise
+    elif img_type == 't2':
+        images = t2[1:]
+    elif img_type == 't3':
+        images = t3[1:]
+
     X_train, X_test, y_train, y_test = train_test_split(images, df, test_size=0.2, random_state=42)
 
     y_train = np.array(y_train['fz']).reshape(-1, 1)
@@ -266,11 +272,8 @@ def main():
     CNN.summary()
     CNN.fit(X_train, y_train, epochs=150, batch_size=8, x_val=None, y_val=None) # train the NN
     CNN.evaluate(X_test, y_test) # evaluate the NN
-    CNN.save_network(finger_name)
+    CNN.save_network(finger_name, img_type)
     CNN.plot_learning_curves()
-
-    loss = CNN.loss
-
 
 
 if __name__ =='__main__':
