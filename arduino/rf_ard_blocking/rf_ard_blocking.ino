@@ -14,26 +14,26 @@ int index_servo_potpin = A11;
 int index_phi3_potpin = A4;
 int index_phi2_potpin = A6;
 double index_set_pos;
-double index_actual_pos;
+double index_phi1;
 double Output;
 float index_phi3;
 float index_phi2;
 
-double phi_d;
+double py_msg;
 
 float start_time = millis();
 float new_time=0;
 
 // Init serial comms class
 Serial_Comms serial_comms;
-PID myPID(&index_actual_pos, &Output, &phi_d, 0.05,0,0, DIRECT);
+//PID myPID(&index_actual_pos, &Output, &phi_d, 0.05,0,0, DIRECT);
 
 
 float read_encoders(char finger){
   // pass in a character that corresponds to the finger you want to update
   if(finger = 'I'){
     analogReference(EXTERNAL);
-    index_actual_pos = index_servo_enc2deg(analogRead(index_servo_potpin));
+    index_phi1 = index_servo_enc2deg(analogRead(index_servo_potpin));
     //index_actual_pos = analogRead(index_servo_potpin);
 
     analogReference(DEFAULT);
@@ -88,50 +88,28 @@ void setup() {
 
   pinMode(FSR_PIN, INPUT);
 
-  index_set_pos = -45;
   
-
-  //indexservo.attach(INDEX_SERV_PWM);
-  indexservo.writeMicroseconds(index_servo_deg2microsec(-45));
-
-  myPID.SetMode(AUTOMATIC);
-
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
 
-  
-  float elapsed;
-  // Send info for 10 seconds before using PID
-  while (elapsed < 20000){
-    
-    elapsed = new_time - start_time;
-    read_encoders('I');
-    fsr_reading = analogRead(FSR_PIN);
-    force_reading = fsr_2N(fsr_reading);
-    
-    serial_comms.recvWithStartEndMarkers();
-    
-    //phi_d = atof(serial_comms.receivedChars);
-    serial_comms.replyToPython(index_actual_pos, index_phi2, index_phi3, force_reading, index_set_pos);
-    
-    new_time = millis();
-  }
-  
   read_encoders('I');
   fsr_reading = analogRead(FSR_PIN);
   force_reading = fsr_2N(fsr_reading);
   
   serial_comms.recvWithStartEndMarkers();
   
-  phi_d = atof(serial_comms.receivedChars);
-  
-  serial_comms.replyToPython(index_actual_pos, index_phi2, index_phi3, force_reading, index_set_pos);
+  py_msg = atof(serial_comms.receivedChars);
+  serial_comms.replyToPython(index_phi1, index_phi2, index_phi3, force_reading, index_phi1);
 
-  myPID.Compute(); // compute the new servo position using PID
-  index_set_pos = Output;
-  //indexservo.writeMicroseconds(index_servo_deg2microsec(index_set_pos));
+  if (py_msg == 1){
+    indexservo.attach(INDEX_SERV_PWM);
+    indexservo.writeMicroseconds(index_servo_deg2microsec(index_phi1));
+  }
+  else if (py_msg==0){
+    indexservo.detach();
+  }
+
 
   // use phi_d from pyth in PID control loop
 
