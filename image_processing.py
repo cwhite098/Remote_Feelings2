@@ -108,6 +108,7 @@ def mask_with_blobs(frames, finger_name, refit=False):
             cv2.circle(mask, (int(kpt.pt[0]), int(kpt.pt[1])), int(kpt.size), 255, -1) #add circles to mask
 
         masked_frame = cv2.bitwise_and(frame, frame, mask=mask)
+        masked_frame = masked_frame/255
         out_frames.append(masked_frame)
 
     return np.array(out_frames)
@@ -138,8 +139,10 @@ def apply_thresholding(frames, params):
     thresh_offset = params[1] # unpack params
     out = []
     for frame in frames:
-        frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, thresh_width, thresh_offset)
+        frame = cv2.adaptiveThreshold(frame, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, thresh_width, thresh_offset)
+        #frame =frame/255
         out.append(frame)
+         
     return np.array(out)
 
 

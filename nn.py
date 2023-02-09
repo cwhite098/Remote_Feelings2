@@ -1,104 +1,225 @@
-import torch
-import torchvision
-import torchvision.transforms as transforms
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import Dataset
+import numpy as np
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, Activation, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+import tensorflow.keras.regularizers as regularizers
+from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.model_selection import train_test_split
 from data import load_data, print_summary
+import time
+import json
+
+class PoseNet():
+    def __init__(self, conv_activation, dropout_rate,
+                    l1_rate, l2_rate, learning_rate, decay_rate, dense_width, loss_func,
+                    batch_bool = True, N_convs=4, N_filters=512):
+        self.model = None
+        self.history = None
+
+        # Model Hyperparameters
+        self.conv_activation = conv_activation
+        self.dropout_rate = dropout_rate
+        self.l1_rate = l1_rate
+        self.l2_rate = l2_rate
+        self.dense_width = dense_width
+        self.learning_rate = learning_rate
+        self.decay_rate = decay_rate
+        self.loss_func = loss_func
+        self.batch_bool = batch_bool
+        self.N_convs = N_convs
+        self.N_filters = N_filters
+
+        # Get the time to be used for saving the model
+        stamp = str(time.ctime())
+        stamp=stamp.replace(' ', '_')
+        self.stamp=stamp.replace(':', '-')
 
 
-class CustomImageDataset(Dataset):
-    '''https://pytorch.org/tutorials/beginner/basics/data_tutorial.html'''
-    def __init__(self, df, images, finger_name, device, transform=None, target_transform=None):
+    def create_network(self, input_height, input_width, num_outputs):
+        '''
+        Create the CNN model as a sequential model in Keras.
 
-        self.images = images
-        self.img_labels = df[['Image_Name','fz']]
-        self.transform = transform
-        self.target_transform = target_transform
-        self.finger_name = finger_name
-        self.device = device
+        Parameters
+        ----------
+        input_height : int
+            The height in pixels of the input images.
+        input_width : int
+            The width in pixels of the input images.
+        num_outputs : int
+            The length of the target vectors.
+        '''
+        self.model = Sequential()
 
-    def __len__(self):
-        return len(self.img_labels)
+        # 1st convolution
+        self.model.add(Conv2D(filters=128, kernel_size=(3,3), padding='same',
+                        input_shape=(input_height, input_width, 1)))
+        if self.batch_bool:
+            self.model.add(BatchNormalization())
+        self.model.add(Activation(self.conv_activation))
+        self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
 
-    def __getitem__(self, idx):
-        image = self.images[idx]
-        image = torch.as_tensor(image.reshape((1, image.shape[0], image.shape[1])), dtype = torch.float32, device=self.device)
-        label = torch.as_tensor(self.img_labels.iloc[idx, 1], dtype = torch.float32, device=self.device)
-        if self.transform:
-            image = self.transform(image) # converts to tensor and normalises
-        if self.target_transform:
-            label = self.target_transform(label)
-        if self.device=='cuda':
-            return image, label
+        # 2nd convolution
+        for i in range(self.N_convs):
+            self.model.add(Conv2D(filters=self.N_filters, kernel_size=(3,3), padding='same'))
+            if self.batch_bool:
+                self.model.add(BatchNormalization())
+            self.model.add(Activation(self.conv_activation))
+            self.model.add(MaxPooling2D(pool_size=(2,2), strides=(2,2)))
+
+        # Flatten the convolved images
+        self.model.add(Flatten())
+
+        #model.add(Dense(256, activation='relu'))
+        #model.add(Dense(128, activation='relu'))
+        self.model.add(Dropout(rate=self.dropout_rate))
+        self.model.add(Dense(self.dense_width, activation='relu', 
+                        kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate)))
+
+        # Output Layer
+        self.model.add(Dropout(rate=self.dropout_rate))
+        self.model.add(Dense(num_outputs, activation='linear', 
+                    kernel_regularizer=regularizers.L1L2(l1=self.l1_rate, l2=self.l2_rate)))
+
+        self.model.compile(loss=self.loss_func, 
+                        optimizer=Adam(learning_rate=self.learning_rate, decay = self.decay_rate), 
+                        metrics=['mae', 'mse'])
+    
+
+    def fit(self, x_train, y_train, epochs, batch_size, 
+            x_val=None, y_val=None):
+        '''
+        Fit (train) the NN with early stopping if a validation set is provided.
+
+        Parameters
+        ----------
+        x_train : np.array
+            The training set's images.
+        y_train : np.array
+            The training set's target images.
+        epochs : int
+            The maximum number of epochs to train for.
+        batch_size : int
+            The batch size to train the network with.
+        x_val : np.array / None
+            The validation set's images (if provided).
+        y_val : np.array / None
+            The validations set's targets (if provided).
+        '''
+        # Save details on the training data
+        self.x_train = x_train
+        self.y_train = y_train
+        self.x_val = x_val
+        self.y_val = y_val
+        self.epochs = epochs
+
+        # Train the network
+        if (isinstance(x_val, np.ndarray) and isinstance(y_val, np.ndarray)) or (isinstance(x_val, list) and isinstance(y_val, np.ndarray)):
+            callback = EarlyStopping(monitor='val_loss', patience=10)
+            self.history = self.model.fit(x_train, y_train,
+                                        epochs=epochs,
+                                        batch_size=batch_size,
+                                        callbacks = [callback],
+                                        validation_data = (x_val,y_val))
+
         else:
-            return image, label
+            callback = EarlyStopping(monitor='loss', patience=10)
+            self.history = self.model.fit(x_train, y_train,
+                                        epochs=epochs,
+                                        batch_size=batch_size,
+                                        callbacks = [callback])
 
 
-class Net(nn.Module):
-    def __init__(self, finger_name, device):
-        super().__init__()
-        self.finger_name = finger_name
 
-        self.convLayer1 = nn.Conv2d(1, 32, 3)
-        self.convLayer2 = nn.Conv2d(32, 32, 3)
-        self.pool = nn.MaxPool2d(3, 1)
-        self.hidden = nn.Linear(563200, 16)
-        self.outLayer = nn.Linear(16,1)
+    def evaluate(self, x_test, y_test):
+        '''
+        Evaluate the Model on the test set.
+        '''
+        # Save details on the testing set
+        self.x_test = x_test
+        self.y_test = y_test
 
-        self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=0.001)
+        # Evaluate the network
+        self.loss, self.mae, self.mse = self.model.evaluate(x_test, y_test)
+        print('Evaluation MAE: ', self.mae)
 
-        self.transform = transforms.Compose([transforms.Normalize((0.5), (0.5))])
 
-        self.losses = []
-        self.device=device
+    def summary(self):
+        '''
+        Print the summary of the NN
+        '''
+        self.model.summary()
 
-    def forward(self, x):
 
-        x = self.pool(F.relu(self.convLayer1(x))) # input convolution
-        for i in range(4):
-            x = self.pool(F.relu(self.convLayer2(x))) # subsequent convolutions
+    def plot_learning_curves(self):
+        '''
+        Plot the loss and the validation loss
+        '''
+        plt.plot(self.history.history['loss'], label='Loss')
+        plt.plot(self.history.history['val_loss'], label= 'Val Loss')
+        plt.savefig('saved_nets/'+'_'+self.stamp+'/learning-curve.pdf')
+        plt.legend(), plt.title('Loss Curve'), plt.show()
 
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = F.relu(self.hidden(x))
-        x = self.outLayer(x)
-        return x
 
-    def train(self, X_train, y_train, batch_size, epochs):
+    def return_history(self):
+        return self.model.history, self.model
 
-        trainset = CustomImageDataset(y_train, X_train, self.finger_name, self.device, transform=self.transform)
 
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                          shuffle=True, num_workers=2)
+    def save_network(self, finger_name):
+        '''
+        Save the network and a JSON of parameters.
+        '''
+        param_dict = {
+            'finger' : finger_name,
+            'training examples': self.x_train.shape[0],
+            'test examples': self.x_test.shape[0],
+            'epochs': self.epochs,
+            'conv activation': self.conv_activation,
+            'dropout rate': self.dropout_rate,
+            'l1 rate': self.l1_rate,
+            'l2 rate': self.l2_rate,
+            'Dense width': self.dense_width,            
+            'learning rate': self.learning_rate,
+            'decay rate': self.decay_rate,
+            'loss function': self.loss_func,
+        }
 
-        for epoch in range(epochs):  # loop over the dataset multiple times
-            running_loss = 0.0
-            for i, data in enumerate(trainloader, 0):
-                # get the inputs; data is a list of [inputs, labels]
-                inputs, labels = data
+        if self.loss:
+            param_dict['MAE'] = self.mae
+            param_dict['loss'] = self.loss
+            param_dict['MSE'] = self.mse
 
-                # zero the parameter gradients
-                self.optimizer.zero_grad()
+        self.model.save('saved_nets/'+finger_name+'_'+self.stamp+'/CNN.h5')
+        with open('saved_nets/'+finger_name+'_'+self.stamp+'/params.json', 'w') as fp:
+            json.dump(param_dict, fp)
+            fp.close()
 
-                # forward + backward + optimize
-                outputs = self(inputs)
-                labels = torch.reshape(labels, [batch_size,1])
 
-                loss = self.criterion(outputs, labels)
-                loss.backward()
-                self.optimizer.step()
-                # print statistics
-                running_loss += loss.item()
+    def load_net(self, path):
+        '''
+        Load a pre-trained model from a .h5 file.
+        
+        Parameters
+        ----------
+        path : str
+            The path to the folder containing the saved model.
+        '''
+        print('[INFO] Loading Model')
+        self.model = load_model(path+'/CNN.h5')
 
-            print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / i:.3f}')
-            self.losses.append(running_loss) # save the loss for plotting
-            running_loss = 0.0
+    def predict(self, input):
+        '''
+        Generate predictions to a set of inputs.
 
-        print('Finished Training')
+        Parameters
+        ----------
+        input : np.array
+            Array containing the set of tactile images to generate predictions for.
+        '''
+        angles = self.model.predict(input)
+        return angles
 
 
 
@@ -106,9 +227,6 @@ class Net(nn.Module):
 
 
 def main():
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #check if gpu available
-    print(device)
 
     batch_size = 16 # from paper
     finger_name = 'Middle'
@@ -118,12 +236,41 @@ def main():
     print(finger_name+':')
     print_summary(df)
 
-    images = t1[1:] # remove default image
+    images = t1[1:]/255 # remove default image and normalise
+    # t2 and t3 are already normalised
     X_train, X_test, y_train, y_test = train_test_split(images, df, test_size=0.2, random_state=42)
 
-    net = Net(finger_name, device) # Init CNN
-    net.to(device)
-    net.train(X_train, y_train, batch_size, epochs=2) # train the CNN
+    y_train = np.array(y_train['fz']).reshape(-1, 1)
+    y_test = np.array(y_test['fz']).reshape(-1, 1)
+    # Normalise the labels
+    scaler = StandardScaler()
+    scaler.fit(y_train)
+    y_train = scaler.transform(y_train)
+    y_test = scaler.transform(y_test)
+
+
+    CNN = PoseNet(  conv_activation = 'elu',
+                    dropout_rate = 0.001,
+                    l1_rate = 0.0001,
+                    l2_rate = 0.01,
+                    learning_rate = 0.00001,
+                    decay_rate = 0.000001,
+                    dense_width = 16,
+                    loss_func = 'mse',
+                    batch_bool = False,
+                    N_convs = 4,
+                    N_filters = 512
+                     )
+
+    CNN.create_network(240, 100, 1) # create the NN
+    CNN.summary()
+    CNN.fit(X_train, y_train, epochs=150, batch_size=8, x_val=None, y_val=None) # train the NN
+    CNN.evaluate(X_test, y_test) # evaluate the NN
+    CNN.save_network(finger_name)
+    CNN.plot_learning_curves()
+
+    loss = CNN.loss
+
 
 
 if __name__ =='__main__':
