@@ -93,7 +93,7 @@ class RF:
         self.phi_dot = np.array([0,0,0])
         self.theta_dot = np.array([0,0,0])
 
-        self.index_l = [0.044, 0.027, 0.016]
+        self.index_l = [0.044, 0.029, 0.019]
         self.index_r = [0.03, 0.059, 0.05, 0.048, 0.016, 0.014]
         self.A = np.array([0.012, 0.07])
 
@@ -120,6 +120,7 @@ class RF:
         self.delta_t = 1
 
         self.debug = 0
+        self.blocking = False
 
         self.com = serial.Serial()
         self.com.port = com_port
@@ -133,6 +134,7 @@ class RF:
         self.serial_thread.start()
 
         keyboard.add_hotkey('x', self.exit_key)
+        keyboard.add_hotkey('b', self.block_key)
 
         if plot:
             self.fig, self.ax = plt.subplots()
@@ -148,13 +150,21 @@ class RF:
             self.background = self.fig.canvas.copy_from_bbox(self.ax.bbox)
             time.sleep(1)
 
-        self.run()
 
     def exit_key(self):
         # Button press that exits the program
         keyboard.press('x')
         print('Closing all...')
         os._exit(1)
+
+    def block_key(self):
+        keyboard.press('b')
+        if self.blocking == True:
+            self.blocking=False
+            print('Unblocking')
+        elif self.blocking == False:
+            self.blocking = True
+            print('Blocking')
 
 
     def update_message(self, phi_d_new, F_res):
@@ -318,43 +328,18 @@ class RF:
 
         return 0
 
-    def run(self):
 
-        # Find the rest force value when no movement
+    def calib_fsr(self):
         print('Hold finger still, finding force rest point...')
         rest_list = []
         for i in range(20):
             self.parse_input()
             rest_list.append(self.F_FSR)
             time.sleep(0.001)
-        rest_point = np.mean(rest_list)
+        self.rest_point = np.mean(rest_list)
 
-        while True:
-            time1 = time.time()
 
-            self.parse_input() # read from serial and update params
-            self.F_FSR = -(self.F_FSR - rest_point)
-            #print(self.F_FSR)
-            self.forwards_kinematics() # find the fingertip position
-            self.inverse_kinematics() # get the full pose of the system
-            self.calculate_velocities() # update the velocities using time and previous angles
-            self.calculate_phid()
-            if self.plot:
-                self.update_plot() # Update the realtime plot
-            #self.phid=0
-            if not np.isnan(self.phid):
-                self.update_message(rad2deg(self.phid),0) # send updated data to RF
-
-            #print('Theta: ',self.theta_dot)
-            #print('Phi: ',self.phi)
-            #print('Fingertip Velocity: ', self.vQ)
-            print('Phid: ', rad2deg(self.phid), 'PID Out: ', self.debug)
-            #print('Actual Pos: ', rad2deg(self.phi[0]))
-
-            time.sleep(0.001)
-            time2 = time.time()
-            self.delta_t=time2-time1
-            #print('Delta t: ',self.delta_t)
+            
 
 
 def deg2rad(deg):
@@ -374,7 +359,39 @@ def rad2deg(rad):
 
 def main():
 
-    rf = RF('COM3', True, 115200)
+    rf = RF('COM6', True, 115200)
+    plot = True
+
+    # Find the rest force value when no movement
+    rf.calib_fsr()
+    while True: # the main loop controlling the glove.
+        time1 = time.time()
+
+        # Get data from ard and calculate system pose
+        rf.parse_input() # read from serial and update params
+        rf.F_FSR = -(rf.F_FSR - rf.rest_point)
+        rf.forwards_kinematics() # find the fingertip position
+        rf.inverse_kinematics() # get the full pose of the system
+
+        if rf.blocking:
+            rf.update_message(1,0)
+        else:
+            rf.update_message(0,0)
+
+        print(rf.debug)
+
+        #rf.calculate_velocities() # update the velocities using time and previous angles
+        #rf.calculate_phid()
+
+        # Update the plot
+        if plot:
+            rf.update_plot() # Update the realtime plot
+
+
+        time.sleep(0.001)
+        time2 = time.time()
+        rf.delta_t=time2-time1
+
 
 
 if __name__ == '__main__':
