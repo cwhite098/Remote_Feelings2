@@ -3,11 +3,9 @@
 Servo servo;
 
 int potpin = A11;
-int pos;
+int pos=2500;
 int enc_pos;
-
-char buffer[8];
-String message;
+char incomingByte;
 
 
 void setup() {
@@ -18,29 +16,35 @@ void setup() {
 
   pinMode(potpin, INPUT);
   analogReference(EXTERNAL);
+  servo.writeMicroseconds(pos);
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
 
-
   if (Serial.available() > 0) {
-    // read byte of received data:
-    int rlen = Serial.readBytesUntil('\n', buffer, 8);
+    // read the incoming byte:
+    incomingByte = Serial.read();
 
-    // prints the received data on serial monitor
-    Serial.print(" Received Serial Data is: ");
-
-    for(int i = 0; i < rlen; i++){
-      Serial.print(buffer[i]);
-    }
-
+    // say what you got:
     Serial.println();
+
+    if (incomingByte = 'c'){
+
+      servo.writeMicroseconds(pos);
+      Serial.print("Microseconds:");
+      Serial.print(" ");
+      Serial.print(pos);
+
+      delay(1000);
+
+      enc_pos = analogRead(potpin);
+      Serial.print("Enc Value:");
+      Serial.print(" ");
+      Serial.print(enc_pos);
+
+      pos = pos-100;
+      incomingByte = 0;
+    }
   }
-
-  delay(100);
-
-
-  
-  
 }
