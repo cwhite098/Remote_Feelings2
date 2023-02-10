@@ -1,20 +1,22 @@
 #include <Servo.h>  // add servo library
+#include "serial_comms.h" //add serial class
 
 Servo servo;
-
-int potpin = A11;
-int pos=2500;
+Serial_Comms serial_comms;
+int pos=500;
 int enc_pos;
 char incomingByte;
 
+# define PWM_PIN 5
+# define POT_PIN A7
 
 void setup() {
   // put your setup code here, to run once:
-  servo.attach(11);
+  servo.attach(PWM_PIN);
 
   Serial.begin(9600);
 
-  pinMode(potpin, INPUT);
+  pinMode(POT_PIN, INPUT);
   analogReference(EXTERNAL);
   servo.writeMicroseconds(pos);
 }
@@ -22,29 +24,21 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
 
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    incomingByte = Serial.read();
+    serial_comms.recvWithStartEndMarkers();
 
-    // say what you got:
-    Serial.println();
+    servo.writeMicroseconds(pos);
+    analogReference(EXTERNAL);
+    enc_pos = analogRead(POT_PIN);
+    delay(10);
 
-    if (incomingByte = 'c'){
+    
+    serial_comms.replyToPython(pos, enc_pos);
 
-      servo.writeMicroseconds(pos);
-      Serial.print("Microseconds:");
-      Serial.print(" ");
-      Serial.print(pos);
+    if (serial_comms.receivedChars[0] == 'c'){
 
-      delay(1000);
-
-      enc_pos = analogRead(potpin);
-      Serial.print("Enc Value:");
-      Serial.print(" ");
-      Serial.print(enc_pos);
-
-      pos = pos-100;
+      delay(10);
+      pos = pos+100;
       incomingByte = 0;
+      serial_comms.receivedChars[0] = 'x';
     }
   }
-}

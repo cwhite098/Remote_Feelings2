@@ -4,14 +4,14 @@
 #include <PID_v1.h>
 
 # define FSR_PIN A2
-# define INDEX_SERV_PWM 11
+# define INDEX_SERV_PWM 5
+# define INDEX_POTPIN A7
 
 int fsr_reading;
 float force_reading;
 
 // Init the stuff for the index servo
 Servo indexservo;
-int index_servo_potpin = A11;
 int index_phi3_potpin = A4;
 int index_phi2_potpin = A6;
 double index_set_pos;
@@ -41,7 +41,7 @@ float read_encoders(char finger){
   // pass in a character that corresponds to the finger you want to update
   if(finger = 'I'){
     analogReference(EXTERNAL);
-    index_phi1 = index_servo_enc2deg(analogRead(index_servo_potpin));
+    index_phi1 = index_servo_enc2deg(analogRead(INDEX_POTPIN));
     //index_actual_pos = analogRead(index_servo_potpin);
 
     analogReference(DEFAULT);
@@ -54,13 +54,13 @@ float read_encoders(char finger){
 
 float index_servo_enc2deg(float enc_value){
   //float deg = ((47/238)*enc_value) + 63.98;
-  float deg = (enc_value/5.0623)-147.685;
+  float deg = (-0.2105*enc_value)+113.61;
   return deg;
 }
 
 int index_servo_deg2microsec(float deg){
   //float deg = ((47/238)*enc_value) + 63.98;
-  int microsec = (12.115*(deg+45)) + 1326.6;
+  int microsec = (11.302*deg) + 1422.4;
   return int(microsec);
 }
 
