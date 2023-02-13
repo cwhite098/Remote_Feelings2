@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from data import load_data, print_summary
 import time
 import json
+import os
 
 class PoseNet():
     def __init__(self, conv_activation, dropout_rate,
@@ -222,16 +223,10 @@ class PoseNet():
         return angles
 
 
+def train_network(finger_name, img_type):
 
-
-
-
-def main():
-
-    batch_size = 32 # from paper
-    finger_name = 'Middle'
-    img_type = 't2'
-
+    batch_size = 32
+    
     print('Loading Data...')
     df, t1, t2, t3, blob_locs = load_data(finger_name)
     print(finger_name+':')
@@ -270,10 +265,85 @@ def main():
 
     CNN.create_network(240, 100, 1) # create the NN
     CNN.summary()
-    CNN.fit(X_train, y_train, epochs=150, batch_size=8, x_val=None, y_val=None) # train the NN
+    CNN.fit(X_train, y_train, epochs=200, batch_size=batch_size, x_val=None, y_val=None) # train the NN
     CNN.evaluate(X_test, y_test) # evaluate the NN
     CNN.save_network(finger_name, img_type)
-    CNN.plot_learning_curves()
+    CNN.plot_learning_curves(finger_name, img_type)
+    
+    return CNN
+
+
+def eval_network(finger_name, img_type, label_type):
+    '''
+    Function that loads a saaved network and validates its performance.
+    '''
+    print('Loading Data...')
+    df, t1, t2, t3, blob_locs = load_data(finger_name)
+    print(finger_name+':')
+    print_summary(df)
+
+    if img_type == 't1':
+        images = t1[1:]/255 # remove default image and normalise
+    elif img_type == 't2':
+        images = t2[1:]
+    elif img_type == 't3':
+        images = t3[1:]
+
+    # Hopefully using the same random state will give the same train/test split as used for training.
+    X_train, X_test, y_train, y_test = train_test_split(images, df, test_size=0.2, random_state=42)
+    y_train = np.array(y_train['fz']).reshape(-1, 1)
+    y_test = np.array(y_test['fz']).reshape(-1, 1)
+    # Normalise the labels
+    scaler = StandardScaler()
+    scaler.fit(y_train)
+    y_train = scaler.transform(y_train)
+    y_test = scaler.transform(y_test)
+
+    # Init a network
+    CNN = PoseNet(  conv_activation = 'elu',
+                    dropout_rate = 0.001,
+                    l1_rate = 0.0001,
+                    l2_rate = 0.01,
+                    learning_rate = 0.00001,
+                    decay_rate = 0.000001,
+                    dense_width = 16,
+                    loss_func = 'mse',
+                    batch_bool = False,
+                    N_convs = 4,
+                    N_filters = 512
+                     )
+
+    # Load the network params
+    nets = os.listdir('saved_nets/'+ label_type)
+    for net in nets:
+        if finger_name in net and img_type in net:
+            CNN.load_net('saved_nets/'+ label_type+'/'+net)
+
+    # Generate predictions
+    predictions = CNN.predict(X_test)
+
+    # generate performance metrics
+    test_MAE = CNN.evaluate(X_test, y_test)
+
+    # generate prediction line/regression graphs and save
+    # TODO: MAKE THIS PLOT NICER
+    y_test = scaler.inverse_transform(y_test)
+    predictions = scaler.inverse_transform(predictions)
+    plt.plot(y_test, y_test)
+    plt.scatter(y_test, predictions)
+    plt.title('Predictions vs Ground Truth'), plt.xlabel('Predictions /N'), plt.ylabel('Ground Truth /N')
+    plt.show()
+
+    return test_MAE
+
+
+
+def main():
+
+    #train_network('Thumb', 't3')
+    eval_network('Thumb', 't3', 'fz')
+
+    
 
 
 if __name__ =='__main__':
