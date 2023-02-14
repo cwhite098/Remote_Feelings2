@@ -3,7 +3,7 @@
 
 Servo servo;
 Serial_Comms serial_comms;
-int pos=500;
+int pos=180;
 int enc_pos;
 char incomingByte;
 
@@ -18,7 +18,7 @@ void setup() {
 
   pinMode(POT_PIN, INPUT);
   analogReference(EXTERNAL);
-  servo.writeMicroseconds(pos);
+  servo.write(pos);
 }
 
 void loop() {
@@ -26,7 +26,7 @@ void loop() {
 
     serial_comms.recvWithStartEndMarkers();
 
-    servo.writeMicroseconds(pos);
+    servo.write(pos);
     analogReference(EXTERNAL);
     enc_pos = analogRead(POT_PIN);
     delay(10);
@@ -37,7 +37,7 @@ void loop() {
     if (serial_comms.receivedChars[0] == 'c'){
 
       delay(10);
-      pos = pos+100;
+      pos = pos-10;
       incomingByte = 0;
       serial_comms.receivedChars[0] = 'x';
     }

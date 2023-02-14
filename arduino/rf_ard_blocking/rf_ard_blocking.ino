@@ -1,5 +1,4 @@
-
-#include <Servo.h>  // add servo library
+#include <Servo.h>
 #include "serial_comms.h" //add serial class
 #include <PID_v1.h>
 
@@ -22,6 +21,7 @@ float index_phi2;
 
 double py_msg=0;
 float pos;
+int fix_pos;
 
 # define READ_MSG 40
 # define UPDATE_MOTORS  100
@@ -61,8 +61,13 @@ float index_servo_enc2deg(float enc_value){
 }
 
 float index_servo_enc2microsec(float enc){
-  float microsec = (-2.3793*enc)+2706.7;
+  float microsec = (-2.3793*enc)+2206.7;
   return microsec;
+}
+
+float index_servo_enc2wdeg(float enc){
+  float wdeg = (-0.232*enc)+169.56;
+  return wdeg;
 }
 
 int index_servo_deg2microsec(float deg){
@@ -70,6 +75,8 @@ int index_servo_deg2microsec(float deg){
   int microsec = (-11.302*deg) + 1422.4;
   return int(microsec);
 }
+
+
 //==============
 
 
@@ -105,7 +112,7 @@ void setup() {
   pinMode(FSR_PIN, INPUT);
 
   indexservo.attach(INDEX_SERV_PWM);
-  indexservo.writeMicroseconds(2000);
+  //indexservo.write(180);
   delay(5000);
   indexservo.detach();
 
@@ -120,7 +127,11 @@ void loop() {
   // Read the sensors
   elapsed_t = current_ts - sensor_ts;
   if (elapsed_t >= READ_SENSORS){
-    
+    read_encoders('I');
+    fsr_reading = analogRead(FSR_PIN);
+    force_reading = fsr_2N(fsr_reading);
+    pos = index_servo_enc2microsec(index_phi1);
+
   }
 
   // send and recv data
@@ -134,29 +145,17 @@ void loop() {
   // Activate/deactivate the motors
   elapsed_t = current_ts - motor_ts;
   if (elapsed_t >= UPDATE_MOTORS){
-    
-    read_encoders('I');
-    fsr_reading = analogRead(FSR_PIN);
-    force_reading = fsr_2N(fsr_reading);
-    pos = index_servo_enc2microsec(index_phi1);
-    
     if (py_msg == 1){
-      if (indexservo.attached()){
-        
-        indexservo.writeMicroseconds(int(pos));
-        //serial_comms.replyToPython(index_servo_enc2deg(index_phi1), index_phi2, index_phi3, force_reading, 69);
+      if (indexservo.attached()){ // if servo is active, maintain position
+        indexservo.writeMicroseconds(fix_pos);
       }
       else{
+        fix_pos = pos;// attach servo and save the position
         indexservo.attach(INDEX_SERV_PWM);
-        indexservo.writeMicroseconds(int(pos));
-      }
-      
+      }     
     }
     else if (py_msg==0){
       indexservo.detach();
-      indexservo.writeMicroseconds(int(pos));
     }
   }
-  
-
 }
