@@ -21,7 +21,7 @@ def exit_key():
 
 def main():
     keyboard.add_hotkey('x', exit_key)
-    port = 'COM3'
+    port = 'COM6'
     baud_rate = 9600
     com = serial.Serial()
     com.port = port

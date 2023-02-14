@@ -4,6 +4,9 @@ import serial
 import time
 import cv2 as cv
 import keyboard
+from hardware.hardware import TacTip
+from hardware.hands import Model_O
+from image_processing import crops, thresh_params
 import os
 import platform
 if platform.system() == 'Darwin':   # fixes plots not working on mac
@@ -154,6 +157,8 @@ class RF:
     def exit_key(self):
         # Button press that exits the program
         keyboard.press('x')
+        self.blocking = False
+        time.sleep(0.01)
         print('Closing all...')
         os._exit(1)
 
@@ -331,15 +336,27 @@ class RF:
 
     def calib_fsr(self):
         print('Hold finger still, finding force rest point...')
+        time.sleep(2)
         rest_list = []
         for i in range(20):
             self.parse_input()
             rest_list.append(self.F_FSR)
-            time.sleep(0.001)
+            time.sleep(0.01)
         self.rest_point = np.mean(rest_list)
+        time.sleep(1)
 
+    def calib_pos(self):
+        print('Straighten Finger to Obtain Open Pos...')
+        time.sleep(2)
+        self.parse_input()
+        min_point = self.theta.sum()
+        print('Close Finger to Obtain Closed Pos...')
+        time.sleep(2)
+        self.parse_input()
+        max_point = self.theta.sum()
+        print('Calibration complete...')
+        return min_point, max_point
 
-            
 
 
 def deg2rad(deg):
@@ -359,35 +376,61 @@ def rad2deg(rad):
 
 def main():
 
+    # init tactip
+    print('Initialising TacTip...')
+    finger_name = 'Index'
+    tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], -1, process=True, display=True)
+    tactip.start_cap()
+    time.sleep(1)
+    tactip.start_processing_display()
+
+    # init t-mo
+    T = Model_O('/dev/ttyUSB0', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
+    finger_dict ={'Thumb':3,'Middle':2,'Index':1}
+    T.reset() # reset the hand
+
     rf = RF('COM6', True, 115200)
     plot = True
 
     # Find the rest force value when no movement
     rf.calib_fsr()
+    # Do another calib procedure to set max and min points for finger movement.
+    min_point, max_point = rf.calib_pos()
+    # Use these to scale the finger pos bewteen 0 and 1
+
     while True: # the main loop controlling the glove.
         time1 = time.time()
-
         # Get data from ard and calculate system pose
         rf.parse_input() # read from serial and update params
         rf.F_FSR = -(rf.F_FSR - rf.rest_point)
         rf.forwards_kinematics() # find the fingertip position
         rf.inverse_kinematics() # get the full pose of the system
 
+
+        # TODO:get force and apply blocking if above threshold
+        tactip_force = tactip.force
+        print(tactip_force)
+        if tactip_force > 2: # modify this thresh
+            rf.blocking = True
+        else:
+            rf.blocking = False
+
         if rf.blocking:
             rf.update_message(1,0)
+            if rf.FSR < 2: # modify this tresh
+                rf.blocking = False
+            # Do not move the T-Mo finger if blockin is enabled.
         else:
             rf.update_message(0,0)
+            # get t-mo pos and send to hand
+            tmo_signal = rf.theta.sum()
+            #scaled_signal = 
+            T.moveMotor(finger_dict[finger_name], scaled_signal)
 
         print(rf.debug)
-
-        #rf.calculate_velocities() # update the velocities using time and previous angles
-        #rf.calculate_phid()
-
         # Update the plot
         if plot:
             rf.update_plot() # Update the realtime plot
-
-
         time.sleep(0.001)
         time2 = time.time()
         rf.delta_t=time2-time1
