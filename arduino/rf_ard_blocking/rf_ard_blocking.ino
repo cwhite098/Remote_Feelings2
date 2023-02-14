@@ -21,11 +21,11 @@ float index_phi3;
 float index_phi2;
 
 double py_msg=0;
-int pos=0;
+float pos;
 
-# define READ_MSG 10
-# define UPDATE_MOTORS 10
-# define READ_SENSORS 20
+# define READ_MSG 40
+# define UPDATE_MOTORS  100
+# define READ_SENSORS 50
 
 unsigned long current_ts;
 unsigned long elapsed_t;
@@ -41,7 +41,8 @@ float read_encoders(char finger){
   // pass in a character that corresponds to the finger you want to update
   if(finger = 'I'){
     analogReference(EXTERNAL);
-    index_phi1 = index_servo_enc2deg(analogRead(INDEX_POTPIN));
+    //index_phi1 = index_servo_enc2deg(analogRead(INDEX_POTPIN));
+    index_phi1 = analogRead(INDEX_POTPIN);
     //index_actual_pos = analogRead(index_servo_potpin);
 
     analogReference(DEFAULT);
@@ -52,17 +53,25 @@ float read_encoders(char finger){
   }
 }
 
+//================ trouble
 float index_servo_enc2deg(float enc_value){
   //float deg = ((47/238)*enc_value) + 63.98;
-  float deg = (-0.2105*enc_value)+113.61;
+  float deg = (0.31*enc_value)-154.3;
   return deg;
+}
+
+float index_servo_enc2microsec(float enc){
+  float microsec = (-2.3793*enc)+2706.7;
+  return microsec;
 }
 
 int index_servo_deg2microsec(float deg){
   //float deg = ((47/238)*enc_value) + 63.98;
-  int microsec = (11.302*deg) + 1422.4;
+  int microsec = (-11.302*deg) + 1422.4;
   return int(microsec);
 }
+//==============
+
 
 float index_phi3_enc2deg(float enc_value){
   //float deg = ((47/238)*enc_value) + 63.98;
@@ -89,11 +98,17 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  pinMode(index_servo_potpin, INPUT);
+  pinMode(INDEX_POTPIN, INPUT);
   pinMode(index_phi3_potpin, INPUT);
   pinMode(index_phi2_potpin, INPUT);
 
   pinMode(FSR_PIN, INPUT);
+
+  indexservo.attach(INDEX_SERV_PWM);
+  indexservo.writeMicroseconds(2000);
+  delay(5000);
+  indexservo.detach();
+
 }
 
 
@@ -101,14 +116,10 @@ void loop() {
 
   current_ts = millis();
 
+
   // Read the sensors
   elapsed_t = current_ts - sensor_ts;
   if (elapsed_t >= READ_SENSORS){
-    read_encoders('I');
-    fsr_reading = analogRead(FSR_PIN);
-    force_reading = fsr_2N(fsr_reading);
-
-    pos = index_servo_deg2microsec(index_phi1);
     
   }
 
@@ -117,20 +128,33 @@ void loop() {
   if (elapsed_t >= READ_MSG){
     serial_comms.recvWithStartEndMarkers();
     py_msg = atof(serial_comms.receivedChars);
-    serial_comms.replyToPython(index_phi1, index_phi2, index_phi3, force_reading, pos);
+    serial_comms.replyToPython(index_servo_enc2deg(index_phi1), index_phi2, index_phi3, force_reading, int(pos));
   }
   
   // Activate/deactivate the motors
   elapsed_t = current_ts - motor_ts;
   if (elapsed_t >= UPDATE_MOTORS){
+    
+    read_encoders('I');
+    fsr_reading = analogRead(FSR_PIN);
+    force_reading = fsr_2N(fsr_reading);
+    pos = index_servo_enc2microsec(index_phi1);
+    
     if (py_msg == 1){
-      
-      indexservo.attach(INDEX_SERV_PWM);
-      indexservo.write(int(index_phi1));
+      if (indexservo.attached()){
+        
+        indexservo.writeMicroseconds(int(pos));
+        //serial_comms.replyToPython(index_servo_enc2deg(index_phi1), index_phi2, index_phi3, force_reading, 69);
+      }
+      else{
+        indexservo.attach(INDEX_SERV_PWM);
+        indexservo.writeMicroseconds(int(pos));
+      }
       
     }
     else if (py_msg==0){
       indexservo.detach();
+      indexservo.writeMicroseconds(int(pos));
     }
   }
   
