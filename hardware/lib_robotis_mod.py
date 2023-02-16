@@ -47,7 +47,7 @@ import numpy as np
 import IPython
 
 from hardware.registerDict import *
-import hardware.registerDict
+import hardware.registerDict as registerDict
 
 
 class USB2Dynamixel_Device():
