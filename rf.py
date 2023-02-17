@@ -379,17 +379,17 @@ def main():
     # init tactip
     print('Initialising TacTip...')
     finger_name = 'Index'
-    tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], -1, process=True, display=True)
-    tactip.start_cap()
+    #tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], -1, process=True, display=True)
+    #tactip.start_cap()
     time.sleep(1)
-    tactip.start_processing_display()
+    #tactip.start_processing_display()
 
     # init t-mo
-    T = Model_O('/dev/ttyUSB0', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
+    #T = Model_O('/dev/ttyUSB0', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
     finger_dict ={'Thumb':3,'Middle':2,'Index':1}
-    T.reset() # reset the hand
+    #T.reset() # reset the hand
 
-    rf = RF('COM6', True, 115200)
+    rf = RF('COM3', True, 115200)
     plot = True
 
     # Find the rest force value when no movement
@@ -408,24 +408,26 @@ def main():
 
 
         # TODO:get force and apply blocking if above threshold
-        tactip_force = tactip.force
-        print(tactip_force)
-        if tactip_force > 2: # modify this thresh
-            rf.blocking = True
-        else:
-            rf.blocking = False
+        #tactip_force = tactip.force
+        #print(tactip_force)
+        #if tactip_force > 2: # modify this thresh
+          #  rf.blocking = True
+        #else:
+          #  rf.blocking = False
 
         if rf.blocking:
             rf.update_message(1,0)
             if rf.FSR < 2: # modify this tresh
                 rf.blocking = False
             # Do not move the T-Mo finger if blockin is enabled.
+            # Eventually add code here to move slightly depending on
+            # Different between fsr force and tactip force. - send phi1 deflection to rf to add o fixed_pos
         else:
             rf.update_message(0,0)
             # get t-mo pos and send to hand
             tmo_signal = rf.theta.sum()
             #scaled_signal = 
-            T.moveMotor(finger_dict[finger_name], scaled_signal)
+            #T.moveMotor(finger_dict[finger_name], scaled_signal)
 
         print(rf.debug)
         # Update the plot
