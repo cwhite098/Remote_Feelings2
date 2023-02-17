@@ -96,7 +96,7 @@ class RF:
         self.phi_dot = np.array([0,0,0])
         self.theta_dot = np.array([0,0,0])
 
-        self.index_l = [0.044, 0.029, 0.019]
+        self.index_l = [0.04, 0.029, 0.019]
         self.index_r = [0.03, 0.059, 0.05, 0.048, 0.016, 0.014]
         self.A = np.array([0.012, 0.07])
 
@@ -136,8 +136,9 @@ class RF:
         print('Starting Serial Thread...')
         self.serial_thread.start()
 
-        keyboard.add_hotkey('x', self.exit_key)
+        
         keyboard.add_hotkey('b', self.block_key)
+        keyboard.add_hotkey('x', self.exit_key)
 
         if plot:
             self.fig, self.ax = plt.subplots()
@@ -233,10 +234,11 @@ class RF:
 
         alpha = np.arctan(y_w/x_w)
 
-        test = (l[0]**2 + l[1]**2 - x_w**2 - y_w**2)/(2*l[0]*l[1])
+        arg_theta1 = (l[0]**2 + l[1]**2 - x_w**2 - y_w**2)/(2*l[0]*l[1])
+        arg_theta0 = (x_w**2 + y_w**2 + l[0]**2 - l[1]**2)/(2*l[0]*np.sqrt(x_w**2 + y_w**2))
 
-        self.theta[1] = np.pi - np.arccos((l[0]**2 + l[1]**2 - x_w**2 - y_w**2)/(2*l[0]*l[1]))
-        self.theta[0] = alpha - np.arccos((x_w**2 + y_w**2 + l[0]**2 - l[1]**2)/(2*l[0]*np.sqrt(x_w**2 + y_w**2)))
+        self.theta[1] = np.pi - np.arccos(np.clip(arg_theta1,-1,1))
+        self.theta[0] = alpha - np.arccos(np.clip(arg_theta0,-1,1))
         self.theta[2] = (phi_e - self.theta[1] - self.theta[0])
 
         return 0
@@ -343,19 +345,37 @@ class RF:
             rest_list.append(self.F_FSR)
             time.sleep(0.01)
         self.rest_point = np.mean(rest_list)
+        print('FSR Midpoint: ', self.rest_point)
         time.sleep(1)
+
 
     def calib_pos(self):
         print('Straighten Finger to Obtain Open Pos...')
         time.sleep(2)
-        self.parse_input()
-        min_point = self.theta.sum()
+        min_list = []
+        for i in range(20):
+            self.parse_input()
+            self.forwards_kinematics() # find the fingertip position
+            self.inverse_kinematics() 
+            min_point = self.theta.sum()
+            print(min_point)
+            min_list.append(min_point)
+            time.sleep(0.01)
+
         print('Close Finger to Obtain Closed Pos...')
         time.sleep(2)
-        self.parse_input()
-        max_point = self.theta.sum()
+        max_list = []
+        for i in range(20):
+            self.parse_input()
+            self.forwards_kinematics() # find the fingertip position
+            self.inverse_kinematics()
+            max_point = self.theta.sum()
+            print(max_point)
+            max_list.append(max_point)
+            time.sleep(0.01)
+
         print('Calibration complete...')
-        return min_point, max_point
+        return np.mean(min_list), np.mean(max_point)
 
 
 
@@ -379,23 +399,27 @@ def main():
     # init tactip
     print('Initialising TacTip...')
     finger_name = 'Index'
-    #tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], -1, process=True, display=True)
-    #tactip.start_cap()
-    time.sleep(1)
-    #tactip.start_processing_display()
+    tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], 0, process=True, display=True)
+    tactip.start_cap()
+    time.sleep(3)
+    tactip.start_processing_display()
 
     # init t-mo
-    #T = Model_O('/dev/ttyUSB0', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
+    T = Model_O('COM12', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
     finger_dict ={'Thumb':3,'Middle':2,'Index':1}
-    #T.reset() # reset the hand
+    T.reset() # reset the hand
 
     rf = RF('COM3', True, 115200)
     plot = True
+
 
     # Find the rest force value when no movement
     rf.calib_fsr()
     # Do another calib procedure to set max and min points for finger movement.
     min_point, max_point = rf.calib_pos()
+    pos_range = max_point-min_point
+    print('Min Point: ', min_point)
+    print('Max Point: ', max_point)
     # Use these to scale the finger pos bewteen 0 and 1
 
     while True: # the main loop controlling the glove.
@@ -403,21 +427,23 @@ def main():
         # Get data from ard and calculate system pose
         rf.parse_input() # read from serial and update params
         rf.F_FSR = -(rf.F_FSR - rf.rest_point)
+        #print(rf.F_FSR)
         rf.forwards_kinematics() # find the fingertip position
         rf.inverse_kinematics() # get the full pose of the system
 
-
+        '''
         # TODO:get force and apply blocking if above threshold
-        #tactip_force = tactip.force
+        tactip_force = tactip.force
         #print(tactip_force)
-        #if tactip_force > 2: # modify this thresh
-          #  rf.blocking = True
-        #else:
-          #  rf.blocking = False
+        if tactip_force > 2: # modify this thresh
+            rf.blocking = True
+        else:
+            rf.blocking = False
+        '''
 
         if rf.blocking:
             rf.update_message(1,0)
-            if rf.FSR < 2: # modify this tresh
+            if rf.F_FSR < 0: # if finger pushing back, release block
                 rf.blocking = False
             # Do not move the T-Mo finger if blockin is enabled.
             # Eventually add code here to move slightly depending on
@@ -426,10 +452,12 @@ def main():
             rf.update_message(0,0)
             # get t-mo pos and send to hand
             tmo_signal = rf.theta.sum()
-            #scaled_signal = 
-            #T.moveMotor(finger_dict[finger_name], scaled_signal)
+            scaled_signal = (tmo_signal - min_point)/pos_range
+            print(scaled_signal)
+            if not np.isnan(scaled_signal):
+                T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
 
-        print(rf.debug)
+        #print(rf.debug)
         # Update the plot
         if plot:
             rf.update_plot() # Update the realtime plot
