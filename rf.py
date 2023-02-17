@@ -96,7 +96,7 @@ class RF:
         self.phi_dot = np.array([0,0,0])
         self.theta_dot = np.array([0,0,0])
 
-        self.index_l = [0.044, 0.029, 0.019]
+        self.index_l = [0.04, 0.029, 0.019]
         self.index_r = [0.03, 0.059, 0.05, 0.048, 0.016, 0.014]
         self.A = np.array([0.012, 0.07])
 
@@ -234,10 +234,11 @@ class RF:
 
         alpha = np.arctan(y_w/x_w)
 
-        test = (l[0]**2 + l[1]**2 - x_w**2 - y_w**2)/(2*l[0]*l[1])
+        arg_theta1 = (l[0]**2 + l[1]**2 - x_w**2 - y_w**2)/(2*l[0]*l[1])
+        arg_theta0 = (x_w**2 + y_w**2 + l[0]**2 - l[1]**2)/(2*l[0]*np.sqrt(x_w**2 + y_w**2))
 
-        self.theta[1] = np.pi - np.arccos((l[0]**2 + l[1]**2 - x_w**2 - y_w**2)/(2*l[0]*l[1]))
-        self.theta[0] = alpha - np.arccos((x_w**2 + y_w**2 + l[0]**2 - l[1]**2)/(2*l[0]*np.sqrt(x_w**2 + y_w**2)))
+        self.theta[1] = np.pi - np.arccos(np.clip(arg_theta1,-1,1))
+        self.theta[0] = alpha - np.arccos(np.clip(arg_theta0,-1,1))
         self.theta[2] = (phi_e - self.theta[1] - self.theta[0])
 
         return 0
@@ -354,7 +355,10 @@ class RF:
         min_list = []
         for i in range(20):
             self.parse_input()
+            self.forwards_kinematics() # find the fingertip position
+            self.inverse_kinematics() 
             min_point = self.theta.sum()
+            print(min_point)
             min_list.append(min_point)
             time.sleep(0.01)
 
@@ -363,7 +367,10 @@ class RF:
         max_list = []
         for i in range(20):
             self.parse_input()
+            self.forwards_kinematics() # find the fingertip position
+            self.inverse_kinematics()
             max_point = self.theta.sum()
+            print(max_point)
             max_list.append(max_point)
             time.sleep(0.01)
 
@@ -420,7 +427,7 @@ def main():
         # Get data from ard and calculate system pose
         rf.parse_input() # read from serial and update params
         rf.F_FSR = -(rf.F_FSR - rf.rest_point)
-        print(rf.F_FSR)
+        #print(rf.F_FSR)
         rf.forwards_kinematics() # find the fingertip position
         rf.inverse_kinematics() # get the full pose of the system
 
@@ -444,7 +451,9 @@ def main():
             # get t-mo pos and send to hand
             tmo_signal = rf.theta.sum()
             scaled_signal = (tmo_signal - min_point)/pos_range
-            #T.moveMotor(finger_dict[finger_name], scaled_signal)
+            print(scaled_signal)
+            if not np.isnan(scaled_signal):
+                T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
 
         #print(rf.debug)
         # Update the plot
