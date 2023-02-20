@@ -6,6 +6,8 @@ import os
 from skimage.metrics import structural_similarity as ssim
 
 
+
+
 crops = {
     'Thumb': [118,0,218,240],
     'Middle': [120,0,220,240],
@@ -147,7 +149,7 @@ def apply_thresholding(frames, params):
 
 
 def main():
-
+    '''
     finger_name = 'Index'
 
     t1_frames, names = load_frames(finger_name, crops[finger_name])
@@ -155,9 +157,9 @@ def main():
 
     # Testing the thresholding
     t2_frames_thresh = apply_thresholding(t1_frames, thresh_params[finger_name])
-    '''for f in frames_thresh:
+    for f in frames_thresh:
         cv2.imshow('Test', f)
-        cv2.waitKey()'''
+        cv2.waitKey()
 
     # Testing the masking with blobs
     t3_frames = mask_with_blobs(t1_frames, finger_name, refit=True)
@@ -167,6 +169,10 @@ def main():
 
     blob_locs = get_blob_locs(t1_frames, finger_name, refit=False)
     print(blob_locs[0])
+    '''
+    
+
+
     
 if __name__ == '__main__':
     main()

@@ -41,34 +41,36 @@ class TacTip:
         self.stopped = False
 
         # Init a network
-        self.CNN = PoseNet(  conv_activation = 'elu',
-                    dropout_rate = 0.001,
-                    l1_rate = 0.0001,
-                    l2_rate = 0.01,
-                    learning_rate = 0.00001,
-                    decay_rate = 0.000001,
-                    dense_width = 16,
-                    loss_func = 'mse',
-                    batch_bool = False,
-                    N_convs = 4,
-                    N_filters = 512
-                     )
-        # Load the network params
-        label_type = 'fz'
-        img_type = 't2'
-        nets = os.listdir('saved_nets/'+ label_type)
-        for net in nets:
-            if name in net and img_type in net:
-                self.CNN.load_net('saved_nets/'+ label_type+'/'+net)
-        
-        print('Loading Data...')
-        df, t1, t2, t3, blob_locs = load_data(name)
-        images = t2[1:]
-        X_train, X_test, y_train, y_test = train_test_split(images, df, test_size=0.2, random_state=42)
-        y_train = np.array(y_train['fz']).reshape(-1, 1)
-        # Normalise the labels
-        self.scaler = StandardScaler() # fit a scaler to inverse the predictions when generated
-        self.scaler.fit(y_train)
+        if self.process:
+            self.CNN = PoseNet(  conv_activation = 'elu',
+                        dropout_rate = 0.001,
+                        l1_rate = 0.0001,
+                        l2_rate = 0.01,
+                        learning_rate = 0.00001,
+                        decay_rate = 0.000001,
+                        dense_width = 16,
+                        loss_func = 'mse',
+                        batch_bool = False,
+                        N_convs = 4,
+                        N_filters = 512
+                        )
+            # Load the network params
+            label_type = 'fz'
+            img_type = 't2'
+            nets = os.listdir('saved_nets/'+ label_type)
+            for net in nets:
+                if name in net and img_type in net:
+                    print('saved_nets/'+ label_type+'/'+net)
+                    self.CNN.load_net('saved_nets/'+ label_type+'/'+net)
+            
+            print('Loading Data...')
+            df, t2 = load_data(name, 't2')
+            images = t2[1:]
+            X_train, X_test, y_train, y_test = train_test_split(images, df, test_size=0.2, random_state=42)
+            y_train = np.array(y_train['fz']).reshape(-1, 1) 
+            # Normalise the labels
+            self.scaler = StandardScaler() # fit a scaler to inverse the predictions when generated
+            self.scaler.fit(y_train)
         self.force = 0
 
         # Let camera warm up
@@ -85,11 +87,13 @@ class TacTip:
         '''
         # grab 1 frame and save it for ssim comparisons
         ret, frame = self.vid.read()
-        self.initial_img = self.process_frame(frame)
+        if self.process:
+            self.initial_img = self.process_frame(frame)
 
         # Capture frames from camera 
         while not self.stopped:
             ret, self.frame = self.vid.read()
+            time.sleep(0.01)
             
 
     def process_and_display(self):
@@ -141,11 +145,11 @@ class TacTip:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)# convert to grayscale
         x0,y0,x1,y1 = self.crop
         frame = frame[y0:y1,x0:x1]
-        frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, self.thresh_width, self.thresh_offset)
+        frame = cv2.adaptiveThreshold(frame, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, self.thresh_width, self.thresh_offset)
 
         # use nn to predict
-        force = self.CNN.predict(frame)
-        self.force = self.scaler.inverse_transform(force)
+        self.force = self.CNN.predict(frame.reshape(1,frame.shape[0],frame.shape[1],1), verbose=0)
+        #self.force = self.scaler.inverse_transform(self.force)
 
         return frame
 
@@ -295,12 +299,16 @@ class FTsensor:
 
 
 def main():
-    fsr = FSR('/dev/ttyACM0', '9600')
-    for i in range(10):
-        
-        fsr_reading = fsr.read_sensor()
-        print(fsr_reading)
-        time.sleep(1)
+
+    print('Initialising TacTip...')
+    finger_name = 'Index'
+    tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], 0, process=True, display=True)
+    tactip.start_cap()
+    time.sleep(3)
+    tactip.start_processing_display()
+
+
+
 
 if __name__ == '__main__':
     main()

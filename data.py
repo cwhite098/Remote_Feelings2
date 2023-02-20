@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 
 
 def print_summary(df):
-    print(df[['fz','ssim_t1', 'ssim_t2', 'ssim_t3']].describe())
+    print(df[['fz','ssim']].describe())
 
 
-def load_data(finger_name):
+def load_data(finger_name, img_type):
 
     # Load the data
     path = 'data/' + finger_name + '.csv'
@@ -21,39 +21,41 @@ def load_data(finger_name):
     df['F_res'] = F_res
 
     # Load the images and get ssim
-    t1_frames, names = load_frames(finger_name, crops[finger_name])
-    ssims = get_all_ssim(t1_frames)
-    df['ssim_t1'] = ssims
+    frames, names = load_frames(finger_name, crops[finger_name])
+    if img_type == 't1':
+        ssims = get_all_ssim(frames)
+        df['ssim'] = ssims
 
-    # Apply thresholding and get ssim for t2 processed images
-    t2_frames = apply_thresholding(t1_frames, thresh_params[finger_name])
-    ssims = get_all_ssim(t2_frames)
-    df['ssim_t2'] = ssims
+    if img_type == 't2':
+        # Apply thresholding and get ssim for t2 processed images
+        frames = apply_thresholding(frames, thresh_params[finger_name])
+        ssims = get_all_ssim(frames)
+        df['ssim'] = ssims
 
-    # Do the above for the masked frames
-    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=False)
-    ssims = get_all_ssim(t3_frames)
-    df['ssim_t3'] = ssims
+    if img_type == 't3':
+        # Do the above for the masked frames
+        frames = mask_with_blobs(frames, finger_name, refit=False)
+        ssims = get_all_ssim(frames)
+        df['ssim'] = ssims
     
     # Load the keypoint locations
-    blob_locs = get_blob_locs(t1_frames, finger_name, refit=False)
+    if img_type == 't4':
+        frames = get_blob_locs(frames, finger_name, refit=False)
 
     print('Finger Name: '+finger_name)
+    print('Image Type: '+img_type)
     print(df.head())
 
-    return df, t1_frames, t2_frames, t3_frames, blob_locs
+    return df, frames
 
 
 
 def main():
-    df_mid, t1_mid, t2_mid, t3_mid, blob_locs_mid = load_data('Middle')
-    print_summary(df_mid)
-
-    df_ind, t1_ind, t2_ind, t3_ind, blob_locs_ind = load_data('Index')
-    print_summary(df_ind)
-
-    df_thu, t1_thu, t2_thu, t3_thu, blob_locs_thu = load_data('Thumb')
-    print_summary(df_thu)
+    df, frames = load_data('Index', 't2')
+    print_summary(df)
+    print(np.max(frames[0]))
+    plt.scatter(df['ssim'], df['F_res'])
+    plt.show()
     
 
 if __name__ == '__main__':

@@ -13,6 +13,7 @@ if platform.system() == 'Darwin':   # fixes plots not working on mac
     import matplotlib
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
+import sys
 
 # Define Globals
 startMarker = '<'
@@ -393,6 +394,12 @@ def rad2deg(rad):
     deg = (rad/(2*np.pi)) * 360
     return deg
 
+def print_info(fsr_reading, tactip_force, rf_debug, finger_pos):
+    '''Nice func to print out important info on just one line'''
+    tac_force = tactip_force[0][0]
+    sys.stdout.write('\rFSR Reading: {}, TacTip Force: {}, RF Debug: {}, Finger Pos: {}'.format(np.round(fsr_reading,3), np.round(tac_force,3), rf_debug, np.round(finger_pos,3)))
+    sys.stdout.flush()
+    
 
 def main():
 
@@ -409,18 +416,17 @@ def main():
     finger_dict ={'Thumb':3,'Middle':2,'Index':1}
     T.reset() # reset the hand
 
-    rf = RF('COM3', True, 115200)
-    plot = True
-
+    rf = RF('COM6', False, 115200)
 
     # Find the rest force value when no movement
     rf.calib_fsr()
-    # Do another calib procedure to set max and min points for finger movement.
+    # Do another calib procedure to set max and min points for finger movement.xx
     min_point, max_point = rf.calib_pos()
     pos_range = max_point-min_point
     print('Min Point: ', min_point)
     print('Max Point: ', max_point)
     # Use these to scale the finger pos bewteen 0 and 1
+    time.sleep(2)
 
     while True: # the main loop controlling the glove.
         time1 = time.time()
@@ -431,35 +437,36 @@ def main():
         rf.forwards_kinematics() # find the fingertip position
         rf.inverse_kinematics() # get the full pose of the system
 
-        '''
+  
         # TODO:get force and apply blocking if above threshold
         tactip_force = tactip.force
-        #print(tactip_force)
-        if tactip_force > 2: # modify this thresh
+        #print(tactip_force) 
+        
+        if tactip_force > 0:
             rf.blocking = True
-        else:
+            if rf.F_FSR < 0 :
+                rf.blocking = False
+        elif rf.F_FSR < 0:
             rf.blocking = False
-        '''
 
+        # Get new pos for tmo finger
+        tmo_signal = rf.theta.sum() 
+        scaled_signal = (tmo_signal - min_point)/pos_range * 0.8
+        
         if rf.blocking:
             rf.update_message(1,0)
             if rf.F_FSR < 0: # if finger pushing back, release block
                 rf.blocking = False
-            # Do not move the T-Mo finger if blockin is enabled.
-            # Eventually add code here to move slightly depending on
-            # Different between fsr force and tactip force. - send phi1 deflection to rf to add o fixed_pos
+                if not np.isnan(scaled_signal):
+                    T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
         else:
             rf.update_message(0,0)
             # get t-mo pos and send to hand
-            tmo_signal = rf.theta.sum()
-            scaled_signal = (tmo_signal - min_point)/pos_range
-            print(scaled_signal)
             if not np.isnan(scaled_signal):
                 T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
 
-        #print(rf.debug)
-        # Update the plot
-        if plot:
+        print_info(rf.F_FSR, tactip.force, rf.debug, scaled_signal)
+        if rf.plot:
             rf.update_plot() # Update the realtime plot
         time.sleep(0.001)
         time2 = time.time()
