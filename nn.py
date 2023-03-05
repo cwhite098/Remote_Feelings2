@@ -210,7 +210,7 @@ class PoseNet():
         print('[INFO] Loading Model')
         self.model = load_model(path+'/CNN.h5')
 
-    def predict(self, input):
+    def predict(self, input, verbose=1):
         '''
         Generate predictions to a set of inputs.
 
@@ -219,7 +219,7 @@ class PoseNet():
         input : np.array
             Array containing the set of tactile images to generate predictions for.
         '''
-        angles = self.model.predict(input)
+        angles = self.model.predict(input, verbose=verbose)
         return angles
 
 
@@ -228,21 +228,21 @@ def train_network(finger_name, img_type):
     batch_size = 32
     
     print('Loading Data...')
-    df, t1, t2, t3, blob_locs = load_data(finger_name)
+    df, imgs = load_data(finger_name, img_type)
     print(finger_name+':')
     print_summary(df)
 
     if img_type == 't1':
-        images = t1[1:]/255 # remove default image and normalise
+        images = imgs[1:]/255 # remove default image and normalise
     elif img_type == 't2':
-        images = t2[1:]
+        images = imgs[1:]
     elif img_type == 't3':
-        images = t3[1:]
+        images = imgs[1:]
 
     X_train, X_test, y_train, y_test = train_test_split(images, df, test_size=0.2, random_state=42)
 
-    y_train = np.array(y_train['fz']).reshape(-1, 1)
-    y_test = np.array(y_test['fz']).reshape(-1, 1)
+    y_train = np.array(y_train['F_res']).reshape(-1, 1)
+    y_test = np.array(y_test['F_res']).reshape(-1, 1)
     # Normalise the labels
     scaler = StandardScaler()
     scaler.fit(y_train)
@@ -256,11 +256,11 @@ def train_network(finger_name, img_type):
                     l2_rate = 0.01,
                     learning_rate = 0.00001,
                     decay_rate = 0.000001,
-                    dense_width = 16,
+                    dense_width = 32,
                     loss_func = 'mse',
                     batch_bool = False,
-                    N_convs = 4,
-                    N_filters = 512
+                    N_convs = 2,
+                    N_filters = 128
                      )
 
     CNN.create_network(240, 100, 1) # create the NN
@@ -339,9 +339,9 @@ def eval_network(finger_name, img_type, label_type):
 
 
 def main():
-
-    #train_network('Thumb', 't3')
-    eval_network('Thumb', 't3', 'fz')
+    # TODO: Train some networks that predict the resultatnt force rather than just fz
+    train_network('Index', 't2')
+    #eval_network('Thumb', 't3', 'fz')
 
     
 

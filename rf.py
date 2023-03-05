@@ -78,7 +78,7 @@ class Serial_Thread(threading.Thread):
                 self.recv_msg = received_msg
                 pass
             # Send message at a given interval
-            if time.time() - prevTime > 0.004:
+            if time.time() - prevTime > 0.01:
                 self.sendToArduino()
                 prevTime = time.time()
             
@@ -188,19 +188,16 @@ class RF:
             #data = data[:18].decode('utf-8')
             data = data.split(',')
             #print(data)
-            if len(data)==5:
+            if len(data)==13: # if full message received
                 self.phi[0] = deg2rad(float(data[0])) # set phi_1
                 self.phi[1] = deg2rad(float(data[1])) # set phi_2
                 self.phi[2] = deg2rad(float(data[2]))
 
                 self.F_FSR = float(data[3])
-                self.debug = data[4]
-
-                #print(data[3]) # get the force from the FSR
+                self.debug = data[4:]
             else:
-                a=0
-                #print(data)
-                #print(self.sending_thread.message)
+                # Don't updateif complete message not recved
+                pass
 
     def forwards_kinematics(self):
         '''
@@ -396,7 +393,7 @@ def rad2deg(rad):
 
 def print_info(fsr_reading, tactip_force, rf_debug, finger_pos):
     '''Nice func to print out important info on just one line'''
-    tac_force = tactip_force[0][0]
+    tac_force = tactip_force
     sys.stdout.write('\rFSR Reading: {}, TacTip Force: {}, RF Debug: {}, Finger Pos: {}'.format(np.round(fsr_reading,3), np.round(tac_force,3), rf_debug, np.round(finger_pos,3)))
     sys.stdout.flush()
     
@@ -406,19 +403,20 @@ def main():
     # init tactip
     print('Initialising TacTip...')
     finger_name = 'Index'
-    tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], 0, process=True, display=True)
-    tactip.start_cap()
+    #tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], 1, process=True, display=True)
+    #tactip.start_cap()
     time.sleep(3)
-    tactip.start_processing_display()
+    #tactip.start_processing_display()
 
     # init t-mo
-    T = Model_O('COM12', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
+    #T = Model_O('COM12', 1,4,3,2,'MX', 0.4, 0.21, -0.1, 0.05)
     finger_dict ={'Thumb':3,'Middle':2,'Index':1}
-    T.reset() # reset the hand
+    #T.reset() # reset the hand
 
-    rf = RF('COM6', False, 115200)
+    rf = RF('COM6', True, 115200)
 
     # Find the rest force value when no movement
+    
     rf.calib_fsr()
     # Do another calib procedure to set max and min points for finger movement.xx
     min_point, max_point = rf.calib_pos()
@@ -439,8 +437,8 @@ def main():
 
   
         # TODO:get force and apply blocking if above threshold
-        tactip_force = tactip.force
-        #print(tactip_force) 
+       # tactip_force = tactip.force
+        tactip_force=0
         
         if tactip_force > 0:
             rf.blocking = True
@@ -458,14 +456,16 @@ def main():
             if rf.F_FSR < 0: # if finger pushing back, release block
                 rf.blocking = False
                 if not np.isnan(scaled_signal):
-                    T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
+                    #T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
+                    pass
         else:
             rf.update_message(0,0)
             # get t-mo pos and send to hand
             if not np.isnan(scaled_signal):
-                T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
+                #T.moveMotor(finger_dict[finger_name], scaled_signal) # pretty slow
+                pass
 
-        print_info(rf.F_FSR, tactip.force, rf.debug, scaled_signal)
+        print_info(rf.F_FSR, tactip_force, rf.debug, scaled_signal)
         if rf.plot:
             rf.update_plot() # Update the realtime plot
         time.sleep(0.001)
