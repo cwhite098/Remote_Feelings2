@@ -7,8 +7,8 @@ int pos=180;
 int enc_pos;
 char incomingByte;
 
-# define PWM_PIN 5
-# define POT_PIN A7
+# define PWM_PIN 11
+# define POT_PIN A11
 
 void setup() {
   // put your setup code here, to run once:

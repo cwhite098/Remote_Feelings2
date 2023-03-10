@@ -48,17 +48,35 @@ class Serial_Comms {
     
     //===============
     
-    void replyToPython(float phi1, float phi2, float phi3, float F_f, float misc) {
+    void replyToPython(float index_phi1, float index_phi2, float index_phi3, float index_F_f, 
+                       float mid_phi1, float mid_phi2, float mid_phi3, float mid_F_f,
+                       float th_phi1, float th_phi2, float th_phi3, float th_F_f,
+                       float misc) {
         if (newData == true) {
             Serial.print("<");
-            Serial.print(phi1);
+            Serial.print(index_phi1);
             Serial.print(",");
-            Serial.print(phi2);
+            Serial.print(index_phi2);
             Serial.print(",");
-            Serial.print(phi3);
+            Serial.print(index_phi3);
             Serial.print(",");
-            Serial.print(F_f);
-            //Serial.print(receivedChars);
+            Serial.print(index_F_f);
+            Serial.print(",");
+            Serial.print(mid_phi1);
+            Serial.print(",");
+            Serial.print(mid_phi2);
+            Serial.print(",");
+            Serial.print(mid_phi3);
+            Serial.print(",");
+            Serial.print(mid_F_f);
+            Serial.print(",");
+            Serial.print(th_phi1);
+            Serial.print(",");
+            Serial.print(th_phi2);
+            Serial.print(",");
+            Serial.print(th_phi3);
+            Serial.print(",");
+            Serial.print(th_F_f);
             Serial.print(",");
             Serial.print(misc);
             Serial.print('>');

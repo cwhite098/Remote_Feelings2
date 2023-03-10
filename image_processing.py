@@ -60,8 +60,13 @@ def get_all_ssim(frames):
     frames = frames[1:,:,:] # separate the remaining frames
     ssim_list = []
 
+    if (default.max() > 1):
+        range = 255
+    else:
+        range=1
+
     for frame in frames: # get the ssim for every frame
-        similarity = ssim(default, frame)
+        similarity = ssim(default, frame, data_range=range)
         ssim_list.append(similarity)
 
     return ssim_list
@@ -149,27 +154,47 @@ def apply_thresholding(frames, params):
 
 
 def main():
-    '''
+    
     finger_name = 'Index'
-
     t1_frames, names = load_frames(finger_name, crops[finger_name])
     print(t1_frames.shape)
-
+    
     # Testing the thresholding
     t2_frames_thresh = apply_thresholding(t1_frames, thresh_params[finger_name])
-    for f in frames_thresh:
-        cv2.imshow('Test', f)
-        cv2.waitKey()
-
+    
     # Testing the masking with blobs
-    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=True)
-    for f in t3_frames:
-        cv2.imshow('Test', f)
-        cv2.waitKey()
+    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=False)
+    
+    path = 'images/fig/'
 
-    blob_locs = get_blob_locs(t1_frames, finger_name, refit=False)
-    print(blob_locs[0])
-    '''
+    cv2.imshow('Test', t1_frames[0])
+    cv2.waitKey()
+    cv2.imwrite(path+'t1.png', t1_frames[0])
+    
+    cv2.imshow('Test', t2_frames_thresh[0])
+    cv2.waitKey()
+    cv2.imwrite(path+'t2.png', t2_frames_thresh[0])
+    
+    cv2.imshow('Test', t3_frames[0])
+    cv2.waitKey()
+    cv2.imwrite(path+'t3.jpg', 255*t3_frames[0])
+
+
+    det = get_blob_detector(finger_name, t1_frames, refit=False)
+    blob_frame = t1_frames[0].copy()
+    keypoints = det.detect(blob_frame)
+    kpts = [cv2.KeyPoint(kp.point[0], kp.point[1], kp.size) for kp in keypoints]
+
+    for kpt in kpts: # add all kpts to mask
+        cv2.circle(blob_frame, (int(kpt.pt[0]), int(kpt.pt[1])), int(kpt.size), (0,0,255), 2) #add circles to mask
+
+    cv2.imshow('Test', blob_frame)
+    cv2.waitKey()
+    cv2.imwrite(path+'blob.png', blob_frame)
+
+   
+    
+    
     
 
 

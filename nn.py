@@ -265,10 +265,10 @@ def train_network(finger_name, img_type):
 
     CNN.create_network(240, 100, 1) # create the NN
     CNN.summary()
-    CNN.fit(X_train, y_train, epochs=200, batch_size=batch_size, x_val=None, y_val=None) # train the NN
+    CNN.fit(X_train, y_train, epochs=250, batch_size=batch_size, x_val=None, y_val=None) # train the NN
     CNN.evaluate(X_test, y_test) # evaluate the NN
     CNN.save_network(finger_name, img_type)
-    CNN.plot_learning_curves(finger_name, img_type)
+    #CNN.plot_learning_curves(finger_name, img_type)
     
     return CNN
 
@@ -340,7 +340,8 @@ def eval_network(finger_name, img_type, label_type):
 
 def main():
     # TODO: Train some networks that predict the resultatnt force rather than just fz
-    train_network('Index', 't2')
+    train_network('Thumb', 't1')
+    train_network('Thumb', 't2')
     #eval_network('Thumb', 't3', 'fz')
 
     
