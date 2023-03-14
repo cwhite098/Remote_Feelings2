@@ -322,9 +322,19 @@ class RF:
         # Update the parameters 
         #message = str(self.index.blocking) + ','+str(self.middle.blocking)+','+str(self.thumb.blocking)
         if self.index.blocking:
-            message = '1'
+            index = '1'
         else:
-            message = '0'
+            index = '0'
+        if self.middle.blocking:
+            middle = '1'
+        else:
+            middle = '0'
+        if self.thumb.blocking:
+            thumb = '1'
+        else:
+            thumb = '0'
+
+        message = index + ',' + middle + ',' + thumb + ','
         self.serial_thread.send_msg = message
 
     def parse_input(self):
@@ -479,12 +489,15 @@ def print_info(finger_force, tactip_force, rf_debug, finger_pos):
 def main():
 
     # init tactip
-    print('Initialising TacTip...')
+    print('Initialising TacTips...')
     finger_name = 'Index'
-    #tactip = TacTip(320,240,40, finger_name, thresh_params[finger_name][0], thresh_params[finger_name][1], crops[finger_name], 1, process=True, display=True)
-    #tactip.start_cap()
-    time.sleep(3)
-    #tactip.start_processing_display()
+    #index_tactip = TacTip(320,240,40, 'Index', thresh_params['Index'][0], thresh_params['Index'][1], crops['Index'], 2, process=True, display=True)
+    #middle_tactip = TacTip(320,240,40, 'Middle', thresh_params['Middle'][0], thresh_params['Middle'][1], crops['Middle'], 2, process=True, display=True)
+    #index_tactip.start_cap()
+    #middle_tactip.start_cap()
+    #time.sleep(3)
+    #index_tactip.start_processing_display()
+    #middle_tactip.start_processing_display
 
     # init t-mo
     #T = Model_O('COM12', 1,4,3,2,'MX', 0.4, 0.21, -0.21, 0.05)
@@ -492,7 +505,7 @@ def main():
     #T.reset() # reset the hand
     #T.adduct(0.5)
 
-    rf = RF('COM3', False, 115200)
+    rf = RF('COM13', False, 115200)
 
     # Find the rest force value when no movement
     rf.calib_fsr()
@@ -539,7 +552,7 @@ def main():
         rf.update_message()
         tactip_force=0
 
-        print_info(rf.thumb.F_f, tactip_force, rf.debug, rf.index.blocking)
+        print_info(rf.index.F_f, tactip_force, rf.debug, rf.index.signal)
         #print(rf.index.phi)
         time.sleep(0.001)
         time2 = time.time()
