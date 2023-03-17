@@ -41,6 +41,10 @@ unsigned long msg_ts;
 
 // Init serial comms class
 Serial_Comms serial_comms;
+float index_blocking;
+float middle_blocking;
+float thumb_blocking;
+String strArr[3];
 
 
 //================ Keep this for now until I have a 2nd look at the servo encoder calibration
@@ -68,9 +72,33 @@ void setup() {
   thumb.initialise("T", TH_PHI1, TH_PHI2, TH_PHI3, TH_FSR_PIN, TH_SERV_PWM, -0.3, 65.4, 177.07, 218.73, 2.42, 237.92);
 }
 
+void decode_msg(){
+  // Function to split the incoming message around "," char
+  String msg;
+  msg = serial_comms.receivedChars;
+  
+  int stringStart = 0;
+  int arrayIndex = 0;
+  for (int i=0; i < msg.length(); i++){
+    //Get character and check if it's our "special" character.
+    if(msg.charAt(i) == ','){
+      //Clear previous values from array.
+      strArr[arrayIndex] = "";
+      //Save substring into array.
+      strArr[arrayIndex] = msg.substring(stringStart, i);
+      //Set new string starting point.
+      stringStart = (i+1);
+      arrayIndex++;
+    }
+  }
+  index_blocking = strArr[0].toFloat();
+  middle_blocking = strArr[1].toFloat();
+  thumb_blocking = strArr[2].toFloat();
+  
+}
+
 
 void loop() {
-
   current_ts = millis();
 
   // Read the sensors
@@ -90,39 +118,71 @@ void loop() {
   elapsed_t = current_ts - msg_ts;
   if (elapsed_t >= READ_MSG){
     serial_comms.recvWithStartEndMarkers();
-    py_msg = atof(serial_comms.receivedChars);
+    py_msg = 0;
+    decode_msg();
     serial_comms.replyToPython(index.phi1, index.phi2, index.phi3, index.fsr_force,
                                middle.phi1, middle.phi2, middle.phi3, middle.fsr_force,
                                thumb.phi1, thumb.phi2, thumb.phi3, thumb.fsr_force,
-                               middle.phi1_enc);
+                               index_blocking);
   }
   
   // Activate/deactivate the motors
   elapsed_t = current_ts - motor_ts;
   if (elapsed_t >= UPDATE_MOTORS){
-    if (py_msg == 1){
+    
+    if (index_blocking == 1){
       if (index.servo.attached()){ // if servo is active, maintain position
         index.servo.writeMicroseconds(index.fix_pos);
-        // this is where the variable ff code will end up for the arduino side
       }
+      else{
+        index.block();
+      }}
+     else if (index_blocking==0){
+      index.unblock();
+     }
+     else if (index_blocking > 1){
+      if (index.servo.attached()){ // if servo is active, maintain position
+        index.servo.writeMicroseconds(index.fix_pos-index_blocking);
+      }
+      else{
+        index.block();
+     }}
+
+    if (middle_blocking == 1){
       if (middle.servo.attached()){ // if servo is active, maintain position
         middle.servo.writeMicroseconds(middle.fix_pos);
         // this is where the variable ff code will end up for the arduino side
       }
+      else{
+        middle.block();
+      }}
+     else if (middle_blocking==0){
+      middle.unblock();
+     }
+     else if (middle_blocking > 1){
+      if (middle.servo.attached()){ // if servo is active, maintain position
+        middle.servo.writeMicroseconds(middle.fix_pos-middle_blocking);
+      }
+      else{
+        middle.block();
+     }}
+
+    if (thumb_blocking == 1){
       if (thumb.servo.attached()){ // if servo is active, maintain position
         thumb.servo.writeMicroseconds(thumb.fix_pos);
         // this is where the variable ff code will end up for the arduino side
       }
       else{
-        index.block();
-        middle.block();
         thumb.block();
-      }     
-    }
-    else if (py_msg==0){
-      index.unblock();
-      middle.unblock();
+      }}
+     else if (thumb_blocking==0){
       thumb.unblock();
-    }
-  }
-}
+     }
+     else if (thumb_blocking > 1){
+      if (thumb.servo.attached()){ // if servo is active, maintain position
+        thumb.servo.writeMicroseconds(thumb.fix_pos-thumb_blocking);
+      }
+      else{
+        thumb.block();
+     }}
+}}

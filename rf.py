@@ -114,6 +114,7 @@ class RF_Finger:
         self.max_point = 0
 
         self.blocking = False
+        self.deviation = 1
         self.plot = plot
 
         if plot:
@@ -294,7 +295,10 @@ class RF:
         self.serial_thread.start()
 
         
-        keyboard.add_hotkey('b', self.block_key)
+        keyboard.add_hotkey('1', self.index_block_key)
+        keyboard.add_hotkey('2', self.middle_block_key)
+        keyboard.add_hotkey('3', self.thumb_block_key)
+        keyboard.add_hotkey('d', self.index_deviate_key)
         keyboard.add_hotkey('x', self.exit_key)
 
         
@@ -308,33 +312,64 @@ class RF:
         print('Closing all...')
         os._exit(1)
 
-    def block_key(self):
-        keyboard.press('b')
+    def index_block_key(self):
+        keyboard.press('1')
         if self.index.blocking == True:
             self.index.blocking=False
-            print('Unblocking')
+            print('Unblocking Index')
+            self.index.deviation = 1
         elif self.index.blocking == False:
             self.index.blocking = True
-            print('Blocking')
+            print('Blocking Index')
+
+    def middle_block_key(self):
+        keyboard.press('2')
+        if self.middle.blocking == True:
+            self.middle.blocking=False
+            print('Unblocking Middle')
+            self.middle.deviation = 1
+        elif self.middle.blocking == False:
+            self.middle.blocking = True
+            print('Blocking Middle')
+
+    def thumb_block_key(self):
+        keyboard.press('3')
+        if self.thumb.blocking == True:
+            self.thumb.blocking=False
+            print('Unblocking Thumb')
+            self.thumb.deviation = 1
+        elif self.thumb.blocking == False:
+            self.thumb.blocking = True
+            print('Blocking Thumb')
+
+    def index_deviate_key(self):
+        # Func for testing inc in deviation of servo (phi_d)
+        keyboard.press('d')
+        self.index.deviation += 10
 
 
     def update_message(self):
-        # Update the parameters 
-        #message = str(self.index.blocking) + ','+str(self.middle.blocking)+','+str(self.thumb.blocking)
+        '''
+        Update the message to send to the arduino.
+        If blocking, send 1 which is 0 deviation blocking
+        Add later: Increase the deviation with F_res for each finger
+        '''
         if self.index.blocking:
-            index = '1'
+            index = self.index.deviation
         else:
-            index = '0'
+            index = 0
+            
         if self.middle.blocking:
-            middle = '1'
+            middle = self.middle.deviation
         else:
-            middle = '0'
-        if self.thumb.blocking:
-            thumb = '1'
-        else:
-            thumb = '0'
+            middle = 0
 
-        message = index + ',' + middle + ',' + thumb + ','
+        if self.thumb.blocking:
+            thumb = self.thumb.deviation
+        else:
+            thumb = 0
+
+        message = str(index) + ',' +str(middle) + ',' + str(thumb) + ','
         self.serial_thread.send_msg = message
 
     def parse_input(self):
@@ -505,7 +540,7 @@ def main():
     #T.reset() # reset the hand
     #T.adduct(0.5)
 
-    rf = RF('COM13', False, 115200)
+    rf = RF('COM3', False, 115200)
 
     # Find the rest force value when no movement
     rf.calib_fsr()
@@ -518,9 +553,12 @@ def main():
     while True: # the main loop controlling the glove.
         time1 = time.time()
         # Get data from ard and calculate system pose and forces at fingertips
+        # Calculate F_res and a deviation for each finger
+        # rf.index.deviation = 100
         rf.update_fingers() # update the pose and the finger force
 
        # tactip_force = tactip.force
+       # Add reset of deviation when blocking broken below
         '''tactip_force=0
         for f in rf.fingers:
             if tactip_force > 0:
@@ -537,7 +575,7 @@ def main():
             f.get_signal()
             if f.blocking:
                 rf.update_message() # modify update message to update with blocking status of all 3 fingers
-                if f.F_FSR < -100: # if finger pushing back, release block
+                if f.F_FSR < -100: # if finger pushing back, release block - modfify this thresold
                     f.blocking = False
                     if not np.isnan(f.signal):
                         #T.moveMotor(finger_dict[f.name], f.signal) # pretty slow
