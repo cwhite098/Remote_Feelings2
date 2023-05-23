@@ -68,7 +68,7 @@ void setup() {
 
   // Initialise each finger with correct pins and calibration offsets for sensors
   index.initialise("I", INDEX_PHI1, INDEX_PHI2, INDEX_PHI3, INDEX_FSR_PIN, INDEX_SERV_PWM, 0.1935, -134.5161, 176.74, 239.56, -2.42, 2727.1);
-  middle.initialise("M", MID_PHI1, MID_PHI2, MID_PHI3, MID_FSR_PIN, MID_SERV_PWM, 0.3475, -134.4788, 178.04, 218.73, -2.42, 2727.4);
+  middle.initialise("M", MID_PHI1, MID_PHI2, MID_PHI3, MID_FSR_PIN, MID_SERV_PWM, -0.3475, 80.62, 178.04, 218.73, 2.4065, 247.1);
   thumb.initialise("T", TH_PHI1, TH_PHI2, TH_PHI3, TH_FSR_PIN, TH_SERV_PWM, -0.3, 65.4, 177.07, 218.73, 2.42, 237.92);
 }
 

@@ -2,9 +2,8 @@ import numpy as np
 import threading
 import serial
 import time
-import cv2 as cv
 import keyboard
-from hardware.hardware import TacTip
+from hardware.hardware import TacTip, Force_Estimator
 from hardware.hands import Model_O
 from image_processing import crops, thresh_params
 import os
@@ -114,7 +113,9 @@ class RF_Finger:
         self.max_point = 0
 
         self.blocking = False
+        self.block_pos = 0
         self.deviation = 1
+        self.deviation_list = []
         self.plot = plot
 
         if plot:
@@ -189,15 +190,16 @@ class RF_Finger:
         #0.9 is the mass of the arm, change this - have a self.mass
         self.F_f = np.array([-F_r,0])  + np.array([F_tau * np.cos(alpha), -F_tau*np.sin(alpha)])
 
-        self.F_f = np.linalg.norm(self.F_f)*10 # scale because its too small
-        self.F_f = 0.6*self.F_f + (1-0.6)*self.F_f_old # lpf
+        self.F_f = np.linalg.norm(self.F_f)*5 # scale because its too small
+        self.F_f = 0.1*self.F_f + (1-0.1)*self.F_f_old # lpf
         self.F_f = self.F_f*np.sign(F_FSR) # use FSR to get direction
         self.F_f_old = self.F_f # save prev for filter
 
 
     def get_signal(self):
 
-        self.signal = (self.theta.sum() - self.min_point)/(self.max_point - self.min_point) * 0.8
+        signal = ((self.phi.sum() - self.min_point)/(self.max_point - self.min_point)) * 0.7
+        self.signal = np.clip(signal, 0, 1) # clip into interval to avoid warnings
         
 
     def calculate_velocities(self, delta_t):
@@ -300,15 +302,28 @@ class RF:
         keyboard.add_hotkey('3', self.thumb_block_key)
         keyboard.add_hotkey('d', self.index_deviate_key)
         keyboard.add_hotkey('x', self.exit_key)
+        keyboard.add_hotkey('s', self.step_key)
+
+        # For saving data during free motion experiment
+        self.index_force_list = []
+        self.middle_force_list = []
+        self.thumb_force_list = []
+
+        self.index_dev_list = []
+        self.middle_dev_list = []
+        self.thumb_dev_list = []
+
+        self.artificial_force = 0
+        self.step_forces = []
+
+        self.initial_time = time.time()
 
         
-
-
     def exit_key(self):
         # Button press that exits the program
         keyboard.press('x')
         self.index.blocking = False
-        time.sleep(0.01)
+        time.sleep(0.1)
         print('Closing all...')
         os._exit(1)
 
@@ -346,6 +361,13 @@ class RF:
         # Func for testing inc in deviation of servo (phi_d)
         keyboard.press('d')
         self.index.deviation += 10
+
+    def step_key(self):
+        keyboard.press('s')
+        self.artificial_force = 2 # this value subject to change
+        self.index.blocking = True
+        self.middle.blocking = True
+        self.thumb.blocking = True
 
 
     def update_message(self):
@@ -387,6 +409,7 @@ class RF:
                 self.index.F_FSR = float(data[3])
 
                 self.middle.phi[0] = deg2rad(float(data[4]))
+                #self.middle.phi[0] = float(data[4])
                 self.middle.phi[1] = deg2rad(float(data[5]))
                 self.middle.phi[2] = deg2rad(float(data[6]))
                 self.middle.F_FSR = float(data[7])
@@ -412,45 +435,9 @@ class RF:
             f.get_finger_force(f.F_FSR)
 
 
-
-    def calculate_phid(self):
-        '''
-        Use the admittance control algo to find phi_d(t+1)
-        '''
-        alpha = np.pi/2 - np.sum(self.theta)
-        self.F_finger = self.F_FSR * (1/np.linalg.norm(np.array([-np.cos(alpha), np.sin(alpha)])))*np.array([-np.cos(alpha), np.sin(alpha)])
-        F_res = self.F_finger - self.F_tactip
-
-        # Calculate the Jacobians
-        l = self.index_l
-        theta = self.theta
-        J_e = (1/self.phi_dot[0]) * self.theta_dot
-        J_f = np.array([[l[0]*np.sin(theta[0]) + l[1]*np.sin(theta[0]+theta[1]) + l[2]*np.sin(theta[0]+theta[1]+theta[2]), \
-                         l[1]*np.sin(theta[0]+theta[1]) + l[2]*np.sin(theta[0]+theta[1]+theta[2]), \
-                         l[2]*np.sin(theta[0]+theta[1]+theta[2])],\
-                        [-l[0]*np.cos(theta[0]) - l[1]*np.cos(theta[0]+theta[1]) - l[2]*np.cos(theta[0]+theta[1]+theta[2]), \
-                         -l[1]*np.cos(theta[0]+theta[1]) - l[2]*np.cos(theta[0]+theta[1]+theta[2]), \
-                         -l[2]*np.cos(theta[0]+theta[1]+theta[2])]])
-
-        self.vQ_old = np.matmul(J_f, self.theta_dot)
-        self.vQ = ((F_res * self.delta_t)/self.mass) + self.vQ_old
-
-        J_comb = np.matmul(J_f, J_e)
-        J_comb_inv = 0.5 * np.array([1/J_comb[0], 1/J_comb[1]])
-
-        # Update phi_d
-        self.phid = self.phi[2] + (np.dot(J_comb_inv, self.vQ))*self.delta_t
-        if not np.isnan(self.phid):
-            self.phid_old = float(self.phid)
-        
-        return 0
-
     def get_grasp_force(self):
         # Update the F_tactip - (is 2 dimensional) from the tactile images
         return 0
-
-    
-
 
     def calib_fsr(self):
         # Loop through each finger and get the fsr restpoint
@@ -476,7 +463,8 @@ class RF:
                 self.parse_input()
                 f.forwards_kinematics() # find the fingertip position
                 f.inverse_kinematics() 
-                min_point = f.theta.sum()
+                #min_point = f.theta.sum()
+                min_point = f.phi.sum()
                 print(min_point)
                 min_list.append(min_point)
                 time.sleep(0.01)
@@ -488,7 +476,8 @@ class RF:
                 self.parse_input()
                 f.forwards_kinematics() # find the fingertip position
                 f.inverse_kinematics()
-                max_point = f.theta.sum()
+                #max_point = f.theta.sum()
+                max_point = f.phi.sum()
                 print(max_point)
                 max_list.append(max_point)
                 time.sleep(0.01)
@@ -514,59 +503,40 @@ def rad2deg(rad):
     deg = (rad/(2*np.pi)) * 360
     return deg
 
-def print_info(finger_force, tactip_force, rf_debug, finger_pos):
+def print_info(index_tac_force, middle_tac_force, thumb_tac_force, index_force, middle_force, thumb_force):
     '''Nice func to print out important info on just one line'''
-    tac_force = tactip_force
-    sys.stdout.write('\rF_finger: {}, TacTip Force: {}, RF Debug: {}, Finger Pos: {}'.format(np.round(finger_force,4), np.round(tac_force,3), rf_debug,finger_pos)) #np.round(finger_pos,3)))
+    sys.stdout.write('\rIndex Tac: {}, Middle Tac: {}, Thumb Tac: {}'.format(np.round(index_tac_force,3), np.round(middle_tac_force,3), np.round(thumb_tac_force,3))) #np.round(finger_pos,3)))
+    sys.stdout.write('\rIndex F: {}, Middle F: {}, Thumb F: {}'.format(np.round(index_force,3), np.round(middle_force,3), np.round(thumb_force,3)))
     sys.stdout.flush()
     
 
 def main():
 
-    # init tactip
-    print('Initialising TacTips...')
-    finger_name = 'Index'
-    #index_tactip = TacTip(320,240,40, 'Index', thresh_params['Index'][0], thresh_params['Index'][1], crops['Index'], 2, process=True, display=True)
-    #middle_tactip = TacTip(320,240,40, 'Middle', thresh_params['Middle'][0], thresh_params['Middle'][1], crops['Middle'], 2, process=True, display=True)
-    #index_tactip.start_cap()
-    #middle_tactip.start_cap()
-    #time.sleep(3)
-    #index_tactip.start_processing_display()
-    #middle_tactip.start_processing_display
-
     # init t-mo
-    #T = Model_O('COM12', 1,4,3,2,'MX', 0.4, 0.21, -0.21, 0.05)
+    #T = Model_O('COM12', 1,4,3,2,'MX', 0.4, 0.21, 0, 0.05)
     finger_dict ={'Thumb':3,'Middle':2,'Index':1}
     #T.reset() # reset the hand
     #T.adduct(0.5)
+
+    # Init NN predictor - inits the tactips within
+    print('Initialising NN...')
+    #Estimator = Force_Estimator('Combined', 't1')
+    #Estimator.start_predictions() # starts generating predictions from most recent captured images
 
     rf = RF('COM3', False, 115200)
 
     # Find the rest force value when no movement
     rf.calib_fsr()
-
     # Do another calib procedure to set max and min points for finger movement.xx
     rf.calib_pos()
 
-    F_finger_old = 0
+    total_blocking = False
 
+    rf.initial_time = time.time()
     while True: # the main loop controlling the glove.
         time1 = time.time()
         # Get data from ard and calculate system pose and forces at fingertips
-        # Calculate F_res and a deviation for each finger
-        # rf.index.deviation = 100
         rf.update_fingers() # update the pose and the finger force
-
-       # tactip_force = tactip.force
-       # Add reset of deviation when blocking broken below
-        '''tactip_force=0
-        for f in rf.fingers:
-            if tactip_force > 0:
-                f.blocking = True
-                if f.F_FSR < -100 :
-                    f.blocking = False
-            elif f.F_FSR < -100:
-                f.blocking = False'''
 
         # Loop through fingers and move t-mo
         for f in rf.fingers:
@@ -574,24 +544,55 @@ def main():
                 f.update_plot()
             f.get_signal()
             if f.blocking:
-                rf.update_message() # modify update message to update with blocking status of all 3 fingers
-                if f.F_FSR < -100: # if finger pushing back, release block - modfify this thresold
-                    f.blocking = False
-                    if not np.isnan(f.signal):
-                        #T.moveMotor(finger_dict[f.name], f.signal) # pretty slow
-                        pass
-            else:
-                rf.update_message()
-                # get t-mo pos and send to hand
-                if not np.isnan(f.signal):
-                    #T.moveMotor(finger_dict[f.name], f.signal) # pretty slow
+                # Calculate the deviations for step response
+                if f.name == 'Index':
+                    #f_res = f.F_f - Estimator.index_force
                     pass
-        
-        rf.update_message()
-        tactip_force=0
+                elif f.name == 'Middle':
+                    #f_res = f.F_f - Estimator.middle_force
+                    pass
+                elif f.name == 'Thumb':
+                    #f_res = f.F_f - Estimator.thumb_force
+                    pass
+                
+                f_res = -1
+                if f_res > 0:
+                    if (f.name == 'Index') or (f.name == 'Middle'):
+                        f.deviation = f_res*100 # only update dev if finger overpowers reported force
+                        f.deviation_list.append(f.deviation)
+                    else:
+                        f.deviation = f_res*80
+                        f.deviation_list.append(f.deviation)
+                if f_res > 0:
+                    #T.moveMotor(finger_dict[f.name], f.block_pos+(0.1*f_res))
+                    pass
+                else:
+                    #T.moveMotor(finger_dict[f.name], f.block_pos)
+                    pass
+            else:
+                #T.moveMotor(finger_dict[f.name], f.signal) # pretty slow
+                f.block_pos = f.signal
 
-        print_info(rf.index.F_f, tactip_force, rf.debug, rf.index.signal)
-        #print(rf.index.phi)
+                
+        
+        # Need some code to initialise the blocking when contact detected.
+        '''if Estimator.index_force > 1:
+            rf.index.blocking = True
+        else:
+            rf.index.blocking = False
+        if Estimator.middle_force > 1:
+            rf.middle.blocking = True
+        else:
+            rf.middle.blocking = False
+        if Estimator.thumb_force > 1:
+            rf.thumb.blocking = True
+        else:
+            rf.thumb.blocking = False'''
+
+        rf.update_message()
+
+        #print_info(Estimator.index_force, Estimator.middle_force, Estimator.thumb_force, rf.index.F_f, rf.middle.F_f, rf.thumb.F_f)
+        print(rf.middle.phi)
         time.sleep(0.001)
         time2 = time.time()
         rf.delta_t=time2-time1

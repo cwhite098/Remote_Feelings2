@@ -4,20 +4,21 @@ import numpy as np
 import json
 import os
 from skimage.metrics import structural_similarity as ssim
+import pandas as pd
 
 
 
 
 crops = {
-    'Thumb': [118,0,218,240],
-    'Middle': [120,0,220,240],
-    'Index': [118,0,218,240]
+    'Thumb': [115,0,205,240],
+    'Middle': [125,0,215,240],
+    'Index': [118,0,208,240]
 }
 
 thresh_params = {
     'Thumb': [15, -25],
-    'Middle': [15, -25],
-    'Index': [15, -25]
+    'Middle': [15, -28],
+    'Index': [15, -16]
 }
 
 def save_json(dict, path):
@@ -38,16 +39,26 @@ def crop_image(image, crop):
     return frame
 
 
-def load_frames(finger_name, crop):
+def load_frames(finger_name, names, crop):
     files = os.listdir('images/'+finger_name)
     frames = []
-    for f in files:
+    names = list(names)
+
+    # Load the default frame
+    img = cv2.imread('images/'+finger_name+'/default.jpg')
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)# convert to grayscale
+    img = crop_image(img, crop)
+    frames.append(img)
+
+    # Load the other frames
+    for f in names:
         img = cv2.imread('images/'+finger_name+'/'+f)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)# convert to grayscale
         img = crop_image(img, crop)
         frames.append(img)
 
-    names = files # get the image names
+    #names = files # get the image names
+    names.insert(0,'default.jpg')
         
     return np.array(frames), names
 
@@ -146,24 +157,51 @@ def apply_thresholding(frames, params):
     thresh_offset = params[1] # unpack params
     out = []
     for frame in frames:
-        frame = cv2.adaptiveThreshold(frame, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, thresh_width, thresh_offset)
-        #frame =frame/255
+        frame = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, thresh_width, thresh_offset)
+        frame =frame/255
         out.append(frame)
          
     return np.array(out)
 
 
+def main2():
+    finger_name = 'Index'
+    path = 'data/' + finger_name + '.csv'
+    df = pd.read_csv(path)
+    names = df['Image_Name']
+    t1_frames, names = load_frames(finger_name, names, crops[finger_name])
+    print(t1_frames.shape)
+
+    cv2.imshow('t1_test',t1_frames[1])
+    cv2.waitKey()
+    
+    '''
+    # Testing the thresholding
+    t2_frames_thresh = apply_thresholding(t1_frames, thresh_params[finger_name])
+    for i in range(3000):
+        cv2.imshow('Test', t2_frames_thresh[i])
+        cv2.waitKey()
+    '''
+    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=False)
+    for i in range(3000):
+        cv2.imshow('Test', t3_frames[i])
+        cv2.waitKey()
+
+
 def main():
     
-    finger_name = 'Index'
-    t1_frames, names = load_frames(finger_name, crops[finger_name])
+    finger_name = 'Thumb'
+    path = 'data/' + finger_name + '.csv'
+    df = pd.read_csv(path)
+    names = df['Image_Name']
+    t1_frames, names = load_frames(finger_name, names, crops[finger_name])
     print(t1_frames.shape)
     
     # Testing the thresholding
     t2_frames_thresh = apply_thresholding(t1_frames, thresh_params[finger_name])
     
     # Testing the masking with blobs
-    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=False)
+    t3_frames = mask_with_blobs(t1_frames, finger_name, refit=True)
     
     path = 'images/fig/'
 
@@ -200,4 +238,4 @@ def main():
 
     
 if __name__ == '__main__':
-    main()
+    main2()

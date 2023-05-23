@@ -11,7 +11,7 @@ void setup() {
   Serial.begin(9600);
 
   pinMode(POT_PIN, INPUT);
-  //analogReference(EXTERNAL);
+  analogReference(EXTERNAL);
 }
 
 void loop() {
